@@ -14,6 +14,7 @@ from ingestion.pipeline import IngestionResult
 from ingestion.profiler import DatasetProfile
 from ingestion.quality_report import QualityReport
 from semantic.semantic_model import SemanticModel, build_semantic_model
+from semantic.trained_name_model import ModelStatus, TrainedNameModel, load_name_model
 
 _KEY = "ingestion_result"
 _SHEETS = "sheet_cache"
@@ -22,6 +23,7 @@ _PROPS = "cleaning_proposals"
 _SEM_OVR = "semantic_overrides"
 _SEM = "semantic_model_cache"
 _SEM_VER = "semantic_editor_version"
+_USE_MODEL = "use_name_model"
 
 
 @dataclass
@@ -126,11 +128,43 @@ def get_semantic_model() -> SemanticModel | None:
     if result is None or df is None or profile is None:
         return None
     cs, ov = get_cleaning(), get_semantic_overrides()
+    nm = get_active_name_model()
     key = (result.dataset.fingerprint, cs.result.actions_fingerprint if cs else "",
-           json.dumps(ov, sort_keys=True))
+           json.dumps(ov, sort_keys=True), nm.version if nm else "rules-only")
     cached = st.session_state.get(_SEM)
     if cached is not None and cached[0] == key:
         return cached[1]
-    model = build_semantic_model(df, profile, ov["roles"], ov["domain"])
+    model = build_semantic_model(df, profile, ov["roles"], ov["domain"], get_active_name_model())
     st.session_state[_SEM] = (key, model)
     return model
+
+
+# ---- optional trained name model -------------------------------------------------------------
+@st.cache_resource(show_spinner=False)
+def _load_name_model_cached() -> tuple[TrainedNameModel | None, ModelStatus]:
+    return load_name_model()
+
+
+def get_name_model_status() -> ModelStatus:
+    return _load_name_model_cached()[1]
+
+
+def reload_name_model() -> None:
+    """Re-check the model folder (after training) and refresh dependent results."""
+    _load_name_model_cached.clear()
+    st.session_state.pop(_SEM, None)
+
+
+def get_use_model() -> bool:
+    """User preference. Off by default: the model is optional and only blended in when switched on."""
+    return bool(st.session_state.get(_USE_MODEL, False))
+
+
+def set_use_model(value: bool) -> None:
+    st.session_state[_USE_MODEL] = bool(value)
+    st.session_state[_SEM_VER] = st.session_state.get(_SEM_VER, 0) + 1
+
+
+def get_active_name_model() -> TrainedNameModel | None:
+    model, _ = _load_name_model_cached()
+    return model if (model is not None and get_use_model()) else None

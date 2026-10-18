@@ -14,3 +14,12 @@
 - Only the first worksheet of a multi-sheet workbook is profiled at a time (selectable).
 - The quality page reports issues; applying cleaning actions is Phase 3.
 - Tested with pandas 3.0 / Python 3.12 / Streamlit 1.66 in the author's sandbox only.
+
+# Added with Phase 4
+- Semantic roles are heuristics. Domain for supply-chain data may read as Retail, Inventory or Operations (override available).
+- The optional name model sees names only, is trained on hand-written and synthetic names, and was evaluated on
+  held-out names plus 73 hand-labelled real headers. On those it matched the rules rather than beating them. It is
+  off by default. It is not evidence of accuracy on your own data.
+- A saved model only loads with the scikit-learn minor version it was trained with; otherwise retrain.
+- Columns whose names suggest personal data (email, phone, password, ...) are excluded from role detection.
+- The Overview page reports counts and detected roles only. KPIs, charts of results and insights arrive in Phase 5+.

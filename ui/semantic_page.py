@@ -11,7 +11,7 @@ from core.logging_config import get_logger
 from semantic.column_lexicon import DOMAIN_LABELS, DOMAINS, ROLE_LABELS, ROLES
 from semantic.semantic_model import SemanticModel
 from ui import state
-from ui.layout import badge, eyebrow, no_dataset_notice, note_list, page_title
+from ui.layout import badge, chips, empty_state, eyebrow, no_dataset_notice, note_list, page_title
 
 log = get_logger("ui.semantic")
 _KIND = {"numeric": "Numeric", "categorical": "Categorical", "temporal": "Date/time", "boolean": "Boolean",
@@ -65,8 +65,7 @@ def _table(model: SemanticModel, flt: str) -> pd.DataFrame:
                                        "Also possible"]).set_index("Column")
 
 
-def _render_columns(model: SemanticModel) -> None:
-    ov = state.get_semantic_overrides()
+def _render_summary(model: SemanticModel) -> None:
     n = len(model.columns)
     strong = sum(c.confidence >= 0.7 for c in model.columns.values())
     c = st.columns(4)
@@ -75,7 +74,9 @@ def _render_columns(model: SemanticModel) -> None:
     c[2].metric("Needs review", len(model.needs_review()))
     c[3].metric("Your overrides", len(model.overridden()))
 
-    st.subheader("Column roles")
+
+def _render_editor(model: SemanticModel) -> None:
+    ov = state.get_semantic_overrides()
     flt = st.radio("Show", ["All", "Needs review", "Overridden"], horizontal=True, label_visibility="collapsed")
     table = _table(model, flt)
     if table.empty:
@@ -109,6 +110,98 @@ def _render_columns(model: SemanticModel) -> None:
         st.rerun()
 
 
+def _render_review(model: SemanticModel) -> None:
+    flagged = model.needs_review()
+    if not flagged:
+        empty_state("Nothing to review", "Every column was classified with reasonable confidence or set by you.")
+        return
+    st.caption("Low-confidence suggestions. Pick the right meaning with one click, or leave a column as it is.")
+    ov = state.get_semantic_overrides()
+    shown = flagged[:12]
+    for col in shown:
+        c = model.columns[col]
+        options = [r for r, _ in c.alternatives if r != c.role][:2]
+        if c.role != "unknown":
+            options.append("unknown")
+        with st.container(border=True):
+            left, right = st.columns([3, 2], vertical_alignment="center")
+            with left:
+                tone = "warn" if c.confidence < 0.3 else "neutral"
+                st.markdown(f'<div class="kv-title" style="font-size:.95rem">{escape(col)} '
+                            f'{badge(ROLE_LABELS[c.role] + " · " + _pct(c.confidence), tone)}</div>'
+                            + note_list(list(c.evidence)[:3]), unsafe_allow_html=True)
+            with right:
+                for role in options:
+                    if st.button(f"Use {ROLE_LABELS[role]}", key=f"rev_{model.fingerprint()}_{col}_{role}",
+                                 use_container_width=True):
+                        roles = dict(ov["roles"])
+                        roles[col] = role
+                        state.set_semantic_overrides(roles, ov["domain"])
+                        st.rerun()
+    if len(flagged) > len(shown):
+        st.caption(f"{len(flagged) - len(shown)} more in the Column roles tab (filter: Needs review).")
+
+
+def _render_mix(model: SemanticModel) -> None:
+    groups: dict[str, list[str]] = {}
+    for c in model.columns.values():
+        groups.setdefault(c.role, []).append(c.column)
+    counts = pd.Series({ROLE_LABELS[r]: len(v) for r, v in sorted(groups.items(), key=lambda kv: -len(kv[1]))})
+    left, right = st.columns([2, 3], gap="large")
+    with left:
+        eyebrow("Columns per role")
+        st.bar_chart(counts, horizontal=True, height=max(180, 32 * len(counts)))
+    with right:
+        eyebrow("Where each role was found")
+        for role, cols in sorted(groups.items(), key=lambda kv: (kv[0] == "unknown", -len(kv[1]))):
+            st.markdown(f"**{ROLE_LABELS[role]}**")
+            chips([(" ", col) for col in cols[:12]] + ([(" ", f"+{len(cols) - 12} more")] if len(cols) > 12 else []))
+
+
+def _pct_str(x: float) -> str:
+    return f"{x * 100:.0f}%"
+
+
+def _render_model_tab() -> None:
+    status, use = state.get_name_model_status(), state.get_use_model()
+    st.markdown("An optional helper that reads **only the column name** and suggests a role. "
+                "Its opinion is blended with the rules; your overrides always win. Column values never reach it.")
+    if not status.available:
+        st.info(status.reason)
+        st.caption("To train it (optional), run these from the project folder, then press Check again:")
+        st.code("python -m training.make_data\npython -m training.train_semantic_model\n"
+                "python -m training.evaluate_semantic_model", language="powershell")
+        if st.button("Check again"):
+            state.reload_name_model()
+            st.rerun()
+        return
+    new = st.toggle("Blend the trained name model into suggestions", value=use,
+                    help="Off by default. Turning it on re-runs the column analysis.")
+    if new != use:
+        state.set_use_model(new)
+        st.rerun()
+    c = st.columns(3)
+    c[0].metric("Model version", status.version)
+    c[1].metric("Trained", status.trained_at or "n/a")
+    c[2].metric("Roles known", status.n_roles)
+    m = status.metrics
+    if m:
+        st.markdown("**Evaluation on names it never saw** (model vs the rules using names alone)")
+        st.dataframe(pd.DataFrame([
+            {"Test set": f"Held-out synthetic names (n={m['held_out_n']})",
+             "Trained model": _pct_str(m["held_out_accuracy"]), "Rules, names only": _pct_str(m["baseline_accuracy"])},
+            {"Test set": f"Hand-labelled real headers (n={m['real_headers_n']})",
+             "Trained model": _pct_str(m["real_headers_accuracy"]), "Rules, names only": _pct_str(m["real_baseline_accuracy"])},
+        ]), hide_index=True)
+        st.caption("Synthetic and hand-labelled names only. This does not measure accuracy on your own data. "
+                   "Where the model does not beat the rules, treat it as a second opinion, not an upgrade.")
+    else:
+        st.caption("No evaluation results match this model file. Run python -m training.evaluate_semantic_model.")
+    if st.button("Check again"):
+        state.reload_name_model()
+        st.rerun()
+
+
 def render_semantic_page() -> None:
     page_title("Semantics", "What each column represents and what kind of business the data describes. "
                             "Corrections you make here apply to all later analysis.")
@@ -131,7 +224,18 @@ def render_semantic_page() -> None:
         st.caption("Based on the cleaned dataset.")
     _render_domain(model)
     st.divider()
-    _render_columns(model)
+    _render_summary(model)
+    n_review = len(model.needs_review())
+    t_cols, t_review, t_mix, t_model = st.tabs(
+        ["Column roles", f"Review queue ({n_review})" if n_review else "Review queue", "Role mix", "Trained model"])
+    with t_cols:
+        _render_editor(model)
+    with t_review:
+        _render_review(model)
+    with t_mix:
+        _render_mix(model)
+    with t_model:
+        _render_model_tab()
     with st.expander("How suggestions are made"):
         st.markdown(
             "Each column is scored against every role using its name (vocabulary and phrases), its detected "
@@ -139,4 +243,5 @@ def render_semantic_page() -> None:
             "relationships between columns (for example revenue = quantity x price). Scores are heuristics, "
             "not probabilities. Columns with no strong signal stay Unknown rather than being guessed, and "
             "columns whose names suggest personal data are excluded. The domain is inferred from column "
-            "vocabulary plus the roles found. Check anything marked for review.")
+            "vocabulary plus the roles found. If you switch on the optional trained name model (Trained model tab), its "
+            "name-only opinion is blended in at a small weight. Check anything marked for review.")

@@ -33,3 +33,7 @@ class ProfilingError(BIError):
 
 class CleaningError(BIError):
     """A cleaning action is malformed or cannot be applied."""
+
+
+class ModelTrainingError(BIError):
+    """The optional semantic name model could not be trained or evaluated."""

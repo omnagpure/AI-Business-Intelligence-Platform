@@ -284,19 +284,23 @@ def classify_columns(df: pd.DataFrame, profile: DatasetProfile,
                                          (), "rules", c.kind)
             continue
         source = "rules"
+        rules_best, rules_top = min(((r, v[0]) for r, v in sc.items()), key=lambda t: (-t[1], t[0]))
         if name_model is not None:
             probs = name_model.predict_proba(c.name)
-            for r, p in probs.items():
-                if r in sc and p > 0:
-                    s0, e0 = sc[r]
-                    sc[r] = ((1 - MODEL_WEIGHT) * s0 + MODEL_WEIGHT * p, e0 + [f"Trained name model: p={p:.2f}"])
-            source = "model"
+            if probs:
+                sc = dict(sc)           # blend on a copy: the rules-only scores stay untouched
+                for r, p in probs.items():
+                    if r in sc and p > 0:
+                        s0, e0 = sc[r]
+                        sc[r] = ((1 - MODEL_WEIGHT) * s0 + MODEL_WEIGHT * p, e0 + [f"Trained name model: p={p:.2f}"])
         ranked = sorted(((r, v[0]) for r, v in sc.items()), key=lambda t: (-t[1], t[0]))
         (best, s1), s2 = ranked[0], ranked[1][1]
         if s1 < MIN_SCORE:
             out[c.name] = ColumnSemantic(c.name, "unknown", 0.0, ("No strong signal from name or values",),
                                          tuple((r, round(s, 2)) for r, s in ranked[:2] if s > 0.15), "rules", c.kind)
             continue
+        if name_model is not None and (best != rules_best or rules_top < MIN_SCORE):
+            source = "model"            # label a column "model" only when the model changed the outcome
         conf = min(0.97, s1) * (0.7 + 0.3 * min(1.0, (s1 - s2) / 0.4))
         alts = tuple((r, round(s, 2)) for r, s in ranked[1:4] if s >= 0.25)
         out[c.name] = ColumnSemantic(c.name, best, round(conf, 2), tuple(sc[best][1]), alts, source, c.kind)

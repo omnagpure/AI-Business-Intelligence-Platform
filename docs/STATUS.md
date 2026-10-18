@@ -5,7 +5,7 @@
 | 1 Foundation | Done |
 | 2 Ingestion + profiling | Done (59 automated tests passed in author's sandbox; re-run locally) |
 | 3 Cleaning | Implemented; 22 tests pass in author's sandbox (UI not run, see below) |
-| 4 Semantics (batches A+B) | Implemented; 15 tests pass in author's sandbox (UI not run). Batch C (trained model) not started |
+| 4 Semantics (A+B+C) | Implemented. Rules, domain, overrides, optional trained name model with held-out evaluation. 25 semantic/training tests pass in author's sandbox (UI not run in a browser) |
 | UI redesign | Applied (theme, CSS design system, grouped navigation, Semantics page) |
 
 ## Phase 2 files
@@ -71,3 +71,25 @@ Streamlit rendering of the Semantics page and the new CSS (stat strips, sidebar,
 (needs internet, falls back to system fonts), `st.logo` with SVG, data_editor save flow, narrow-screen layout.
 Known limits: scores are heuristics; domain for supply-chain data may read as Retail or Inventory
 (override available); dark theme only.
+
+## Phase 4 batch C (trained name model) and UI update
+| Path | Purpose |
+|---|---|
+| training/make_data.py | hand-written seed names, variants, train/test split by base name, hand-labelled real headers |
+| training/train_semantic_model.py | TF-IDF (word + char n-grams) + logistic regression; C chosen by grouped CV on training data only |
+| training/evaluate_semantic_model.py | held-out evaluation, name-only rules baseline, optional end-to-end check on your files |
+| semantic/trained_name_model.py | trusted loader: checksum + version checks, lazy sklearn import, safe fallback |
+| ui/overview_page.py | new home page: counts, quality, workflow strip, detected roles (no invented KPIs) |
+| ui/semantic_page.py | tabs: Column roles, Review queue (one-click fixes), Role mix, Trained model |
+| ui/settings_page.py, ui/state.py, ui/layout.py, app.py | model status/toggle, cache key includes model version, new CSS helpers, Overview is the default page |
+| tests/test_semantic_training.py | 10 tests |
+
+### Evaluation result in the author's sandbox (seed 42; your retrain may differ slightly)
+Held-out synthetic names: model 65.8% vs rules-by-name 67.9%. Hand-labelled real headers (n=73): both 80.8%.
+End to end on the four supply-chain files: rules 95.9% vs rules+model 97.3% (one column changed). Conclusion: the
+model is about as good as the rules, not clearly better, so it ships OFF by default. The baseline vocabulary was
+written by the same author who labelled the real headers, which flatters the rules.
+
+## Phase 4 batch C not verified
+Streamlit rendering of the new pages (only a stubbed-Streamlit smoke test was run), tests/test_app_startup.py
+(needs Streamlit; the sample-data test now relies on the Overview page), training on Windows, scikit-learn versions other than the sandbox's.

@@ -96,6 +96,21 @@ section[data-testid="stSidebar"][aria-expanded="true"] {width:248px !important; 
 .empty-t {font-size:.95rem; font-weight:600; color:var(--text);}
 .empty-d {font-size:.84rem; color:var(--muted); margin-top:.25rem; line-height:1.5;}
 
+/* workflow steps and role chips */
+.steps {display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:0; border:1px solid var(--line);
+  border-radius:var(--r); background:var(--surface); overflow:hidden;}
+.step {padding:.85rem 1rem; border-left:1px solid var(--line); min-width:0;}
+.step:first-child {border-left:none;}
+.step-n {font-size:.6875rem; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); display:flex; gap:.45rem; align-items:center;}
+.dot {width:7px; height:7px; border-radius:50%; background:var(--line-2); display:inline-block;}
+.dot.done {background:var(--accent);} .dot.todo {background:var(--warn);} .dot.soon {background:var(--line-2);}
+.step-t {font-size:.9rem; font-weight:600; color:var(--text); margin-top:.3rem;}
+.step-d {font-size:.78rem; color:var(--muted); margin-top:.15rem; line-height:1.45;}
+.chips {display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem;}
+.chip {font-size:.75rem; padding:.22rem .5rem; border-radius:4px; background:var(--surface-2); border:1px solid var(--line); color:var(--text);}
+.chip b {font-weight:500; color:var(--muted); margin-right:.35rem;}
+[data-testid="stVerticalBlockBorderWrapper"] {border-color:var(--line) !important; border-radius:var(--r) !important;}
+
 @media (max-width: 900px) {
   .block-container {padding:1.25rem 1rem 3rem;}
   .pg-title {font-size:1.2rem;}
@@ -146,3 +161,17 @@ def no_dataset_notice() -> None:
 
 def fmt_int(n: int) -> str:
     return f"{n:,}"
+
+
+def steps(items: list[tuple[str, str, str, str]]) -> None:
+    """Workflow strip. items: (label, title, detail, state) with state in done | todo | soon."""
+    html = "".join(f'<div class="step"><div class="step-n"><span class="dot {escape(st_)}"></span>{escape(lab)}</div>'
+                   f'<div class="step-t">{escape(t)}</div><div class="step-d">{escape(d)}</div></div>'
+                   for lab, t, d, st_ in items)
+    st.markdown(f'<div class="steps">{html}</div>', unsafe_allow_html=True)
+
+
+def chips(pairs: list[tuple[str, str]]) -> None:
+    """Small label/value chips. Values may be user column names, so everything is escaped."""
+    html = "".join(f'<span class="chip"><b>{escape(k)}</b>{escape(v)}</span>' for k, v in pairs)
+    st.markdown(f'<div class="chips">{html}</div>', unsafe_allow_html=True)
