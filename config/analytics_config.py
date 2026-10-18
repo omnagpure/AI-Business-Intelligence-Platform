@@ -20,3 +20,18 @@ class QualityThresholds:
 
 
 DEFAULT_THRESHOLDS = QualityThresholds()
+
+
+@dataclass(frozen=True)
+class CleaningConfig:
+    """Thresholds that decide which cleaning actions are proposed. Nothing is applied automatically."""
+    fill_max_missing_pct: float = 30.0     # propose imputation only up to this missingness
+    drop_column_missing_pct: float = 60.0  # propose dropping a column at or above this missingness
+    drop_rows_max_missing_pct: float = 5.0  # propose dropping rows with missing dates up to this share
+    outlier_iqr_k: float = 3.0             # IQR multiplier; 3.0 flags only extreme values
+    outlier_min_values: int = 20           # do not look for outliers in tiny columns
+    near_duplicate_max_cells: int = 3_000_000  # skip near-duplicate scan on very large tables
+    max_label_cardinality: int = 2000      # skip label standardisation on very high-cardinality columns
+
+
+DEFAULT_CLEANING = CleaningConfig()

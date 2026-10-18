@@ -29,3 +29,7 @@ class InsufficientDataError(BIError):
 
 class ProfilingError(BIError):
     """Profiling failed unexpectedly."""
+
+
+class CleaningError(BIError):
+    """A cleaning action is malformed or cannot be applied."""

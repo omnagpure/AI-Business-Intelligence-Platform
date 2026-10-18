@@ -19,6 +19,9 @@ def render_sidebar_footer() -> None:
             st.markdown(f"**{ds.filename}**")
             st.caption(f"{fmt_int(result.profile.rows)} rows · {result.profile.columns} columns"
                        + (" · synthetic sample" if ds.is_sample else ""))
+            cs = state.get_cleaning()
+            if cs is not None:
+                st.caption(f"Cleaned data active · {cs.result.applied_count} step(s) applied")
             if st.button("Remove dataset", key="clear_ds"):
                 state.clear_result()
                 st.rerun()
