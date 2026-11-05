@@ -9,7 +9,7 @@ from core.logging_config import get_logger
 from ingestion.file_loader import fingerprint_bytes, list_excel_sheets
 from ingestion.pipeline import ingest_bytes, ingest_sample
 from ui import state
-from ui.layout import fmt_int, page_title
+from ui.layout import empty_state, fmt_int, page_title
 
 log = get_logger("ui.upload")
 
@@ -83,8 +83,6 @@ def render_upload_page(settings: Settings) -> None:
                      "XLSX file. Details were written to the application log.")
 
     if state.get_result() is None:
-        with st.container(border=True):
-            st.markdown("**No dataset loaded**")
-            st.caption("Drop a file above to see its structure, missing values and quality issues.")
+        empty_state("No dataset loaded", "Drop a file above to see its structure, missing values and quality issues.")
     else:
         _show_loaded(settings)

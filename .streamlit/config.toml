@@ -1,10 +1,17 @@
 [theme]
 base = "dark"
-primaryColor = "#2bb3a3"
-backgroundColor = "#0f1317"
-secondaryBackgroundColor = "#161b21"
-textColor = "#dfe3e8"
+primaryColor = "#3DA58A"
+backgroundColor = "#0B0D10"
+secondaryBackgroundColor = "#101318"
+textColor = "#E6E8EB"
+borderColor = "#232830"
+baseRadius = "small"
+showWidgetBorder = true
 font = "sans serif"
+
+[theme.sidebar]
+backgroundColor = "#0B0D10"
+secondaryBackgroundColor = "#101318"
 
 [server]
 maxUploadSize = 200

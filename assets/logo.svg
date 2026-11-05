@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="176" height="28" viewBox="0 0 176 28" role="img" aria-label="AI BI Platform">
+  <rect x="2" y="13" width="4.5" height="11" rx="1" fill="#3DA58A"/>
+  <rect x="9.5" y="7" width="4.5" height="17" rx="1" fill="#3DA58A" opacity=".75"/>
+  <rect x="17" y="2" width="4.5" height="22" rx="1" fill="#3DA58A" opacity=".5"/>
+  <text x="32" y="19" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="14.5" font-weight="600" letter-spacing="-0.2" fill="#E6E8EB">AI BI Platform</text>
+</svg>

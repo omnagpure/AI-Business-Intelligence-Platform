@@ -20,3 +20,39 @@ class QualityThresholds:
 
 
 DEFAULT_THRESHOLDS = QualityThresholds()
+
+
+@dataclass(frozen=True)
+class CleaningConfig:
+    """Thresholds that decide which cleaning actions are proposed. Nothing is applied automatically."""
+    fill_max_missing_pct: float = 30.0     # propose imputation only up to this missingness
+    drop_column_missing_pct: float = 60.0  # propose dropping a column at or above this missingness
+    drop_rows_max_missing_pct: float = 5.0  # propose dropping rows with missing dates up to this share
+    outlier_iqr_k: float = 3.0             # IQR multiplier; 3.0 flags only extreme values
+    outlier_min_values: int = 20           # do not look for outliers in tiny columns
+    near_duplicate_max_cells: int = 3_000_000  # skip near-duplicate scan on very large tables
+    max_label_cardinality: int = 2000      # skip label standardisation on very high-cardinality columns
+
+
+DEFAULT_CLEANING = CleaningConfig()
+
+
+@dataclass(frozen=True)
+class AnalyticsConfig:
+    """Settings for descriptive analytics, correlations and KPIs (Phase 5)."""
+    top_n: int = 10                       # categories shown before the rest are grouped as "Other"
+    max_group_cardinality: int = 200      # columns with more distinct values are not used for grouping
+    corr_min_abs: float = 0.30            # weaker correlations are not reported as pairs
+    corr_top_pairs: int = 15
+    corr_max_columns: int = 40            # cap for the correlation matrix
+    corr_min_periods: int = 10            # minimum rows with both values present
+    min_rows: int = 5                     # below this most KPIs are reported as not calculable
+    time_freq: str = "M"                  # D | W | M for trends and growth
+    comparison: str = "previous_period"   # previous_period | year_over_year
+    concentration_top_share: float = 0.10 # share of customers used for the concentration KPI
+    max_general_numeric: int = 4          # numeric columns summarised when no role-based KPI applies
+    preview_rows: int = 100               # rows per page in the data explorer
+    scatter_max_points: int = 5000        # sample size for scatter plots
+
+
+DEFAULT_ANALYTICS = AnalyticsConfig()
