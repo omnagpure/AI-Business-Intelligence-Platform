@@ -16,7 +16,7 @@ from pandas.api import types as pdt
 
 from cleaning.type_inference import to_numeric_clean
 from ingestion.profiler import ColumnProfile, DatasetProfile
-from semantic.column_lexicon import (ID_TOKENS, LEXICON, LOCATION_NUMERIC_TOKENS, MONEY_ROLES, NUMERIC_ROLES,
+from semantic.column_lexicon import (ENTITY_ROLES, ID_TOKENS, LEXICON, LOCATION_NUMERIC_TOKENS, MONEY_ROLES, NUMERIC_ROLES,
                                      RATIO_TOKENS, ROLE_LABELS, SENSITIVE_TOKENS, tokenize, token_set)
 
 MIN_SCORE = 0.30          # below this a column is reported as Unknown
@@ -25,7 +25,8 @@ MODEL_WEIGHT = 0.3
 _ROLES = [r for r in ROLE_LABELS if r != "unknown"]
 # Name tokens that describe an *attribute* (so "Customer City" is a location, not a customer).
 _ATTR_TOKENS = frozenset().union(*(LEXICON[r].strong for r in (
-    "revenue", "cost", "profit", "price", "quantity", "category", "location", "percentage", "balance", "duration")))
+    "revenue", "cost", "profit", "price", "quantity", "category", "location", "percentage", "balance", "duration",
+    "flag")))
 
 
 class NameModel(Protocol):
@@ -130,7 +131,10 @@ def _score_role(role: str, f: _Feat) -> tuple[float, list[str]]:
             if role in MONEY_ROLES and not f.is_int and name_pts:
                 pts += 0.1
                 ev.append("Decimal amounts")
-            if role == "percentage":
+            if role == "percentage" and f.unique <= 2 and f.is_int:
+                mult *= 0.3
+                ev.append("Only two whole values, more like a yes/no flag than a percentage")
+            elif role == "percentage":
                 if -1.0 <= f.vmin and f.vmax <= 1.0 and not f.is_int:
                     pts += 0.3
                     ev.append("Values lie between -1 and 1")
@@ -161,9 +165,12 @@ def _score_role(role: str, f: _Feat) -> tuple[float, list[str]]:
         elif f.unique_ratio >= 0.98 and f.n >= 20 and (f.kind != "numeric" or f.is_int):
             pts += 0.2
             ev.append("Almost every value is unique")
-        if idlike and f.tokens & (LEXICON["customer"].strong | LEXICON["product"].strong):
+        if idlike and f.tokens & frozenset().union(*(LEXICON[r].strong for r in ENTITY_ROLES)):
             pts -= 0.15
             ev.append("A more specific entity role may apply")
+        if _name_match("flag", f)[0] >= 0.6:
+            pts -= 0.4
+            ev.append("Name describes a yes/no status, not an identifier")
     elif role == "text":
         if f.kind == "text":
             pts += 0.7
@@ -178,7 +185,18 @@ def _score_role(role: str, f: _Feat) -> tuple[float, list[str]]:
         elif f.kind == "boolean":
             pts += 0.2
             ev.append("Two-valued column")
-    elif role in ("customer", "product"):
+    elif role == "flag":
+        two_valued = f.kind == "boolean" or (f.kind == "categorical" and f.unique <= 3)
+        if two_valued:
+            pts += 0.3
+            ev.append("Two-valued column")
+        elif numeric and f.vals is not None and f.unique <= 2:
+            pts += 0.3
+            ev.append("Only two distinct numbers")
+        else:
+            mult *= 0.3
+            ev.append("Not a two-valued column")
+    elif role in ENTITY_ROLES:
         if f.kind in ("identifier", "categorical", "text") or (numeric and f.is_int and f.tokens & ID_TOKENS):
             pts += 0.2
             if name_pts and f.tokens & ID_TOKENS:

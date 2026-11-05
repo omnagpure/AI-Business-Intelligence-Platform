@@ -111,8 +111,6 @@ def test_model_scores_do_not_modify_the_dataframe_or_rules_only_result():
     classify_columns(df, prof, _AlwaysRevenue())
     pd.testing.assert_frame_equal(df, before)
     assert classify_columns(df, prof, None) == first
-<<<<<<< HEAD
-=======
 
 
 def test_variants_include_short_forms_prefixes_suffixes_and_separators():
@@ -135,4 +133,4 @@ def test_unseen_domain_names_never_overlap_training_names():
     key = lambda b: tuple(sorted(set(tokenize(b))))
     seen = {key(b) for b in set(train["base"]) | set(test["base"])}
     assert not any(key(b) in seen for b in unseen["base"].unique())
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
+

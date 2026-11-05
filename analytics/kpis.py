@@ -213,7 +213,7 @@ def primary_date_column(df: pd.DataFrame, model: SemanticModel) -> str | None:
 
 def primary_column(df: pd.DataFrame, model: SemanticModel, role: str) -> str | None:
     c = _Ctx(df, model, DEFAULT_ANALYTICS, DataFilter())
-    r = c.rank(role, numeric=role not in {"category", "customer", "product", "location", "datetime"})
+    r = c.rank(role, numeric=role not in {"category", "customer", "product", "location", "datetime", "supplier", "warehouse", "flag"})
     return r[0] if r else None
 
 

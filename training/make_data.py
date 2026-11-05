@@ -5,12 +5,9 @@ Design rules (so the evaluation means something):
 * Seed names are split into train/test BEFORE any variants are generated, so no base name (and no
   case/prefix/suffix variant of it) is ever in both sets. The test set therefore measures
   generalisation to unseen names, not memorisation.
-<<<<<<< HEAD
-=======
 * Names vary the way real exports do: short forms (qty, amt, cust), underscores/camelCase/UPPER, prefixes
   (tbl_, raw_) and suffixes (_v2, _usd, _pct).
 * A third set (UNSEEN_DOMAIN_NAMES) comes from industries absent from training, to test generalisation.
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
 * A second, separate evaluation set is made of real column headers from public supply-chain
   datasets, labelled by hand (REAL_HEADERS). Those are never used for training.
 
@@ -31,12 +28,7 @@ from semantic.column_lexicon import ROLES, tokenize
 SEED = 42
 DATA_DIR = Path(__file__).resolve().parent / "data"
 TEST_FRACTION = 0.3
-<<<<<<< HEAD
-VARIANTS_PER_BASE = 14
-=======
 VARIANTS_PER_BASE = 12
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
-
 SEED_NAMES: dict[str, str] = {
     "revenue": "total sales, net revenue, gross sales, sales amount, order total, invoice amount, turnover, gmv, "
                "income, billing amount, revenue usd, sales value, amt net, txn amount, subscription revenue, mrr, "
@@ -114,14 +106,6 @@ SEED_NAMES: dict[str, str] = {
                "aux, z, f1, f2, attr7, column 12, data, value1, val, metric a, param, q, k, extra, spare, "
                "zz, abc, flag3, v10, unnamed 12",
 }
-
-<<<<<<< HEAD
-# Neutral affixes only: they carry no role information, so they teach the model to ignore noise.
-_PREFIXES = ["", "", "", "", "src", "raw", "final", "tbl", "x"]
-_SUFFIXES = ["", "", "", "", "v2", "1", "old", "new", "clean", "copy"]
-_STYLES = ["snake", "camel", "pascal", "upper", "kebab", "title", "lower_space", "concat"]
-=======
-
 # More names, written to cover more industries and the messy styles seen in real exports.
 SEED_NAMES_EXTRA: dict[str, str] = {
     "revenue": "gross revenue, sales revenue, total income, rental income, tuition fees, license revenue, commission earned, "
@@ -290,6 +274,20 @@ SEED_NAMES_EXTRA: dict[str, str] = {
 for _role, _more in SEED_NAMES_EXTRA.items():
     SEED_NAMES[_role] = SEED_NAMES[_role] + ", " + _more
 
+# Supply-chain roles (hand-written, independent of semantic/column_lexicon.py).
+SEED_NAMES["supplier"] = (
+    "supplier, supplier name, supplier id, vendor, vendor name, vendor id, vendor code, supplier code, manufacturer, "
+    "manufacturer name, supplier company, preferred supplier, primary vendor, vendor account, supplier no, "
+    "sourcing partner, contract supplier, supplier key, vendor key, procurement vendor")
+SEED_NAMES["warehouse"] = (
+    "warehouse, warehouse id, warehouse name, warehouse code, depot, depot id, distribution centre, distribution center, "
+    "dc id, fulfilment centre, fulfillment center, plant, plant id, facility, facility id, storage location, hub id, "
+    "stocking point, site name, factory id, wh code")
+SEED_NAMES["flag"] = (
+    "on time delivery, is on time, delivered on time, in full, otif flag, stockout, stockout flag, stock out, is delayed, "
+    "delayed flag, was late, is late, backorder flag, backordered, promotion flag, promo flag, on promotion, "
+    "is stockout, delivered in full, late shipment flag, expedited flag, is expedited, quality hold flag, rejected flag")
+
 # Names from industries that are NOT in the training seeds. Used only to test generalisation to new domains
 # (hospital, school, farm, telecom, property, HR). Never used for training. Bases that collide with a
 # training base are dropped at build time.
@@ -312,8 +310,6 @@ UNSEEN_DOMAIN_NAMES: dict[str, str] = {
     "text": "doctor remarks, clinical remarks, teacher remarks, report card comment, farm notes, field observation, technician notes, outage description, property description, listing description, agent remarks, interview feedback, performance review text, exit interview notes, resume summary",
     "unknown": "zz1, v7, v8, col9, col 10, field e, field f, tmpcol, misc 3, extra 4, unnamed 15, unnamed 20, x9, x11, attr9, column 15",
 }
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
-
 # Hand-labelled headers from the public supply-chain files used while building this project.
 # Ambiguous columns (for example "Order Item Discount", "SKU_ID") and personal-data columns are left out
 # on purpose. These labels are one person's judgement, not ground truth. Never used for training.
@@ -335,7 +331,7 @@ REAL_HEADERS: dict[str, str] = {
     "Product Description": "text", "Product Name": "product", "Product Price": "price",
     "Product Status": "category", "shipping date (DateOrders)": "datetime", "Shipping Mode": "category",
     # supply_chain_dataset1
-    "Date": "datetime", "Warehouse_ID": "identifier", "Supplier_ID": "identifier", "Region": "location",
+    "Date": "datetime", "Warehouse_ID": "warehouse", "Supplier_ID": "supplier", "Region": "location",
     "Units_Sold": "quantity", "Inventory_Level": "quantity", "Supplier_Lead_Time_Days": "duration",
     "Reorder_Point": "quantity", "Order_Quantity": "quantity", "Unit_Cost": "cost", "Unit_Price": "price",
     "Demand_Forecast": "quantity",
@@ -349,8 +345,6 @@ REAL_HEADERS: dict[str, str] = {
     "quantity_received": "quantity",
 }
 
-<<<<<<< HEAD
-=======
 # ---- realistic name variation ------------------------------------------------------------------
 # Real exports use short forms, underscores, prefixes and suffixes. Most affixes carry no role
 # information (so the model learns to ignore them); a few (_usd, _pct, _dt, _id ...) do, as in real data.
@@ -385,8 +379,6 @@ _ABBR: dict[str, list[str]] = {
 _STYLES = ["snake", "camel", "pascal", "upper", "title_snake", "kebab", "title", "lower_space", "concat", "dot", "upper_concat"]
 _STYLE_WEIGHTS = [30, 10, 8, 14, 6, 3, 10, 7, 5, 4, 3]
 
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
-
 def normalise(name: str) -> str:
     return " ".join(tokenize(name))
 
@@ -398,13 +390,10 @@ def _render(tokens: list[str], style: str) -> str:
         return "_".join(tokens).upper()
     if style == "kebab":
         return "-".join(tokens)
-<<<<<<< HEAD
-=======
     if style == "dot":
         return ".".join(tokens)
     if style == "title_snake":
         return "_".join(t.capitalize() for t in tokens)
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
     if style == "title":
         return " ".join(t.capitalize() for t in tokens)
     if style == "lower_space":
@@ -413,7 +402,6 @@ def _render(tokens: list[str], style: str) -> str:
         return tokens[0] + "".join(t.capitalize() for t in tokens[1:])
     if style == "pascal":
         return "".join(t.capitalize() for t in tokens)
-<<<<<<< HEAD
     return "".join(tokens)       # concat
 
 
@@ -440,7 +428,6 @@ def _bases() -> list[tuple[str, str, tuple[str, ...]]]:
             seen.setdefault(key, set()).add(role)
             items.append((role, raw, key))
     return [(r, b, k) for r, b, k in items if len(seen[k]) == 1 and r in ROLES]
-=======
     if style == "upper_concat":
         return "".join(tokens).upper()
     return "".join(tokens)       # concat
@@ -489,8 +476,6 @@ def _bases(source: dict[str, str] | None = None) -> list[tuple[str, str, tuple[s
             roles_of.setdefault(key, set()).add(role)
             first.setdefault(key, (role, raw))
     return [(r, b, k) for k, (r, b) in first.items() if len(roles_of[k]) == 1 and r in ROLES]
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
-
 
 def build_datasets(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return (train, test) frames with columns name, role, base. Disjoint by base name."""
@@ -505,11 +490,7 @@ def build_datasets(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame]:
         n_test = max(1, round(len(bases) * TEST_FRACTION))
         for i, (base, _) in enumerate(bases):
             target = test_rows if i < n_test else train_rows
-<<<<<<< HEAD
-            for v in _variants(tokenize(base), rng, VARIANTS_PER_BASE):
-=======
             for v in _variants(tokenize(base), rng, VARIANTS_PER_BASE, role):
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
                 target.append({"name": v, "role": role, "base": base})
     train, test = pd.DataFrame(train_rows), pd.DataFrame(test_rows)
     leak = set(train["base"]) & set(test["base"])
@@ -518,8 +499,6 @@ def build_datasets(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame]:
     return train, test
 
 
-<<<<<<< HEAD
-=======
 def build_unseen_domain(seed: int = SEED) -> pd.DataFrame:
     """Names from industries absent from training (see UNSEEN_DOMAIN_NAMES), for a harder generalisation test."""
     seen_keys = {k for _, _, k in _bases()}
@@ -533,7 +512,6 @@ def build_unseen_domain(seed: int = SEED) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
 def real_headers_frame() -> pd.DataFrame:
     return pd.DataFrame({"name": list(REAL_HEADERS), "role": list(REAL_HEADERS.values())})
 
@@ -552,18 +530,13 @@ def main() -> None:
     train.to_csv(a.out / "train.csv", index=False)
     test.to_csv(a.out / "test.csv", index=False)
     real_headers_frame().to_csv(a.out / "real_headers.csv", index=False)
-<<<<<<< HEAD
-    print(f"train: {len(train)} rows from {train['base'].nunique()} base names")
-    print(f"test : {len(test)} rows from {test['base'].nunique()} base names (disjoint from train)")
-    print(f"real : {len(REAL_HEADERS)} hand-labelled headers (evaluation only)")
-=======
     unseen = build_unseen_domain(a.seed)
     unseen.to_csv(a.out / "unseen_domain.csv", index=False)
     print(f"train: {len(train)} rows from {train['base'].nunique()} base names")
     print(f"test : {len(test)} rows from {test['base'].nunique()} base names (disjoint from train)")
     print(f"real : {len(REAL_HEADERS)} hand-labelled headers (evaluation only)")
     print(f"unseen domains: {len(unseen)} rows from {unseen['base'].nunique()} base names (evaluation only)")
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
+
     print("train label counts:", label_distribution(train))
     print(f"written to {a.out}")
 

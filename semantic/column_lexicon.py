@@ -13,6 +13,7 @@ ROLE_LABELS = {
     "category": "Category", "customer": "Customer", "product": "Product", "location": "Location",
     "percentage": "Percentage / rate", "balance": "Balance", "duration": "Duration",
     "target": "Target / label", "text": "Free text", "unknown": "Unknown",
+    "supplier": "Supplier / vendor", "warehouse": "Warehouse / facility", "flag": "Status flag (yes/no)",
 }
 ROLES = tuple(ROLE_LABELS)
 NUMERIC_ROLES = frozenset({"revenue", "cost", "profit", "price", "quantity", "percentage", "balance", "duration"})
@@ -50,17 +51,23 @@ LEXICON: dict[str, Lex] = {
     "target": _l("target label churn churned fraud default outcome converted response flag risk late",
                  "status delay"),
     "text": _l("description comment note review remark message summary feedback"),
+    # supply chain
+    "supplier": _l("supplier vendor manufacturer", "provider distributor carrier"),
+    "warehouse": _l("warehouse depot plant facility", "dc hub site"),
+    "flag": _l("stockout backorder otif delayed ontime promotion promo",
+               "flag", ("on time", "in full", "stock out", "is late", "is delayed", "was late")),
 }
 LOCATION_NUMERIC_TOKENS = frozenset({"lat", "latitude", "lon", "lng", "longitude", "zip", "zipcode", "postal"})
 RATIO_TOKENS = frozenset({"ratio", "rate", "pct", "percent", "percentage", "share", "proportion", "margin"})
 SENSITIVE_TOKENS = frozenset({"password", "passwd", "pwd", "secret", "email", "phone", "mobile", "ssn", "passport", "iban"})
 ID_TOKENS = frozenset({"id", "key", "code", "uuid", "guid"})
+ENTITY_ROLES = ("customer", "product", "supplier", "warehouse")
 
 # ---- business domains ------------------------------------------------------------------------
 DOMAIN_LABELS = {
     "retail": "Retail / e-commerce", "sales_crm": "Sales / CRM", "finance": "Finance",
     "inventory": "Inventory", "marketing": "Marketing", "saas": "SaaS / product analytics",
-    "hr": "Human resources", "operations": "Operations / logistics", "general": "General tabular data",
+    "hr": "Human resources", "operations": "Operations / logistics", "supply_chain": "Supply chain", "general": "General tabular data",
 }
 DOMAINS = tuple(DOMAIN_LABELS)
 
@@ -77,6 +84,8 @@ DOMAIN_LEXICON: dict[str, frozenset[str]] = {
     "marketing": _d("campaign impression click ctr cpc conversion channel spend ad audience"),
     "saas": _d("subscription mrr arr churn plan user session signup active trial seat"),
     "hr": _d("employee salary department hire attrition tenure manager payroll job performance leave headcount"),
+    "supply_chain": _d("supplier vendor warehouse lead reorder stockout backorder fill otif delivery delivered carrier "
+                       "shipment shipping inventory stock freight transit order received ordered defect"),
     "operations": _d("shipping shipment delivery carrier route late delay risk defect throughput production "
                      "supply schedule dispatch freight"),
 }
@@ -89,6 +98,7 @@ DOMAIN_ROLE_SUPPORT: dict[str, frozenset[str]] = {
     "saas": frozenset({"customer", "datetime", "target"}),
     "hr": frozenset({"duration"}),
     "operations": frozenset({"duration", "location", "target"}),
+    "supply_chain": frozenset({"supplier", "warehouse", "flag", "duration", "quantity"}),
 }
 
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")

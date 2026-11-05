@@ -39,15 +39,12 @@ def main() -> None:
     def semantics() -> None:
         render_semantic_page()
 
-<<<<<<< HEAD
-=======
     def dashboard() -> None:
         render_dashboard_page()
 
     def explorer() -> None:
         render_explorer_page()
 
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
     def config() -> None:
         render_settings_page(settings)
 
@@ -63,21 +60,20 @@ def main() -> None:
         "Understand": [
             st.Page(semantics, title="Semantics", url_path="semantics", icon=":material/category:"),
         ],
-<<<<<<< HEAD
-=======
         "Analyze": [
             st.Page(dashboard, title="Dashboard", url_path="dashboard", icon=":material/monitoring:"),
             st.Page(explorer, title="Data explorer", url_path="explorer", icon=":material/table_view:"),
         ],
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
         "System": [
             st.Page(config, title="Settings", url_path="settings", icon=":material/settings:"),
         ],
     })
+
     try:
         st.logo(str(Path(__file__).parent / "assets" / "logo.svg"), size="large")
-    except Exception:  # a missing or unsupported logo must never stop the app
+    except Exception:
         pass
+
     render_sidebar_footer()
     nav.run()
 

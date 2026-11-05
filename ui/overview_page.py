@@ -67,11 +67,7 @@ def render_overview_page() -> None:
                         else f"{n_props} suggestion(s) to review"), "done" if cleaning else "todo"),
         ("4", "Understand", ("Confirmed" if model and not n_review else f"{n_review} column(s) to review")
          if model else "Unavailable", "done" if model and not n_review else "todo"),
-<<<<<<< HEAD
-        ("5", "Analyse", "KPIs, forecasts and insights come in later phases", "soon"),
-=======
         ("5", "Analyse", "Open the Dashboard for KPIs and charts" if model else "Unavailable", "done" if model else "soon"),
->>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
     ])
 
     left, right = st.columns(2, gap="large")

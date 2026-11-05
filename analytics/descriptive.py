@@ -17,7 +17,8 @@ from core.exceptions import InsufficientDataError
 from ingestion.profiler import DatasetProfile
 from ingestion.schema_detector import parse_datetime_series
 
-EXCLUDED_NUMERIC_ROLES = frozenset({"identifier", "datetime", "location", "text", "customer", "product", "category"})
+EXCLUDED_NUMERIC_ROLES = frozenset({"identifier", "datetime", "location", "text", "customer", "product", "category",
+                                   "supplier", "warehouse", "flag"})
 OTHER_LABEL = "Other"
 FREQ_LABELS = {"D": "day", "W": "week", "M": "month"}
 
