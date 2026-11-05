@@ -23,7 +23,11 @@ from core.exceptions import ModelTrainingError
 from semantic.column_classifier import _ROLES, _Feat, _name_match, classify_columns
 from semantic.column_lexicon import ROLES, token_set, tokenize
 from semantic.trained_name_model import EVAL_FILE, MODEL_DIR, load_name_model
+<<<<<<< HEAD
 from training.make_data import REAL_HEADERS, SEED, build_datasets, normalise, real_headers_frame
+=======
+from training.make_data import REAL_HEADERS, SEED, build_datasets, build_unseen_domain, normalise, real_headers_frame
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
 
 
 def rules_name_only(name: str) -> str:
@@ -93,16 +97,31 @@ def evaluate(model_dir: Path = MODEL_DIR, real_files: list[Path] | None = None) 
     seen = {normalise(n) for n in train["name"]}
     unseen = real[[normalise(n) not in seen for n in real["name"]]]
     real_unseen = _compare(unseen["name"].tolist(), unseen["role"].tolist(), model)
+<<<<<<< HEAD
+=======
+    unseen_dom = build_unseen_domain(SEED)
+    dom = _compare(unseen_dom["name"].tolist(), unseen_dom["role"].tolist(), model)
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
     e2e = _end_to_end(real_files, model) if real_files else None
     meta = json.loads((model_dir / "semantic_model.meta.json").read_text(encoding="utf-8"))
     out = {"model_version": status.version, "model_sha256": meta["sha256"], "seed": SEED,
            "label_counts_test": test["role"].value_counts().sort_index().to_dict(),
            "held_out_synthetic": synth, "real_headers_all": real_all,
+<<<<<<< HEAD
            "real_headers_unseen_names": real_unseen, "end_to_end_real_files": e2e,
            "headline": {"held_out_accuracy": synth["model"]["accuracy"], "held_out_n": synth["model"]["n"],
                         "baseline_accuracy": synth["rules_name_only"]["accuracy"],
                         "real_headers_accuracy": real_all["model"]["accuracy"], "real_headers_n": real_all["model"]["n"],
                         "real_baseline_accuracy": real_all["rules_name_only"]["accuracy"]}}
+=======
+           "real_headers_unseen_names": real_unseen, "unseen_domains": dom, "end_to_end_real_files": e2e,
+           "headline": {"held_out_accuracy": synth["model"]["accuracy"], "held_out_n": synth["model"]["n"],
+                        "baseline_accuracy": synth["rules_name_only"]["accuracy"],
+                        "real_headers_accuracy": real_all["model"]["accuracy"], "real_headers_n": real_all["model"]["n"],
+                        "real_baseline_accuracy": real_all["rules_name_only"]["accuracy"],
+                        "unseen_domain_accuracy": dom["model"]["accuracy"], "unseen_domain_n": dom["model"]["n"],
+                        "unseen_domain_baseline_accuracy": dom["rules_name_only"]["accuracy"]}}
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
     (model_dir / EVAL_FILE).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
     return out
 
@@ -121,6 +140,10 @@ def main() -> None:
     out = evaluate(a.model_dir, a.real_files)
     print(f"Model {out['model_version']}  (seed {out['seed']})\n")
     print(_line("Held-out synthetic names", out["held_out_synthetic"]))
+<<<<<<< HEAD
+=======
+    print(_line("Unseen industries", out["unseen_domains"]))
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
     print(_line("Real headers (all)", out["real_headers_all"]))
     print(_line("Real headers (unseen names)", out["real_headers_unseen_names"]))
     if out["end_to_end_real_files"]:

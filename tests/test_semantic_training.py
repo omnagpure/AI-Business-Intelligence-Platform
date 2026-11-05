@@ -111,3 +111,28 @@ def test_model_scores_do_not_modify_the_dataframe_or_rules_only_result():
     classify_columns(df, prof, _AlwaysRevenue())
     pd.testing.assert_frame_equal(df, before)
     assert classify_columns(df, prof, None) == first
+<<<<<<< HEAD
+=======
+
+
+def test_variants_include_short_forms_prefixes_suffixes_and_separators():
+    import random
+    from training.make_data import _variants
+    names = _variants(["order", "quantity"], random.Random(3), 300, "quantity")
+    flat = {normalise(n) for n in names}
+    assert any("qty" in n.split() for n in flat)                       # short form
+    assert any(n.split()[0] in {"src", "raw", "tbl", "fld", "stg"} for n in flat)   # prefix
+    assert any(n.split()[-1] in {"v2", "old", "copy", "cnt", "qty", "count"} for n in flat)  # suffix
+    assert any("_" in n for n in names) and any("-" in n for n in names) and any(" " in n for n in names)
+
+
+def test_unseen_domain_names_never_overlap_training_names():
+    from training.make_data import build_unseen_domain
+    train, test = build_datasets(7)
+    unseen = build_unseen_domain(7)
+    assert len(unseen) > 500 and set(unseen["role"]) <= set(train["role"])
+    from semantic.column_lexicon import tokenize
+    key = lambda b: tuple(sorted(set(tokenize(b))))
+    seen = {key(b) for b in set(train["base"]) | set(test["base"])}
+    assert not any(key(b) in seen for b in unseen["base"].unique())
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)

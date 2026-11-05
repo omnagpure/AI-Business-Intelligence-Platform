@@ -7,7 +7,9 @@ import streamlit as st
 
 from config.settings import load_settings
 from core.logging_config import setup_logging
+from ui.dashboard_page import render_dashboard_page
 from ui.data_quality_page import render_data_quality_page
+from ui.explorer_page import render_explorer_page
 from ui.layout import configure_page
 from ui.overview_page import render_overview_page
 from ui.profile_page import render_profile_page
@@ -37,6 +39,15 @@ def main() -> None:
     def semantics() -> None:
         render_semantic_page()
 
+<<<<<<< HEAD
+=======
+    def dashboard() -> None:
+        render_dashboard_page()
+
+    def explorer() -> None:
+        render_explorer_page()
+
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
     def config() -> None:
         render_settings_page(settings)
 
@@ -52,6 +63,13 @@ def main() -> None:
         "Understand": [
             st.Page(semantics, title="Semantics", url_path="semantics", icon=":material/category:"),
         ],
+<<<<<<< HEAD
+=======
+        "Analyze": [
+            st.Page(dashboard, title="Dashboard", url_path="dashboard", icon=":material/monitoring:"),
+            st.Page(explorer, title="Data explorer", url_path="explorer", icon=":material/table_view:"),
+        ],
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
         "System": [
             st.Page(config, title="Settings", url_path="settings", icon=":material/settings:"),
         ],

@@ -35,3 +35,27 @@ class CleaningConfig:
 
 
 DEFAULT_CLEANING = CleaningConfig()
+<<<<<<< HEAD
+=======
+
+
+@dataclass(frozen=True)
+class AnalyticsConfig:
+    """Settings for descriptive analytics, correlations and KPIs (Phase 5)."""
+    top_n: int = 10                       # categories shown before the rest are grouped as "Other"
+    max_group_cardinality: int = 200      # columns with more distinct values are not used for grouping
+    corr_min_abs: float = 0.30            # weaker correlations are not reported as pairs
+    corr_top_pairs: int = 15
+    corr_max_columns: int = 40            # cap for the correlation matrix
+    corr_min_periods: int = 10            # minimum rows with both values present
+    min_rows: int = 5                     # below this most KPIs are reported as not calculable
+    time_freq: str = "M"                  # D | W | M for trends and growth
+    comparison: str = "previous_period"   # previous_period | year_over_year
+    concentration_top_share: float = 0.10 # share of customers used for the concentration KPI
+    max_general_numeric: int = 4          # numeric columns summarised when no role-based KPI applies
+    preview_rows: int = 100               # rows per page in the data explorer
+    scatter_max_points: int = 5000        # sample size for scatter plots
+
+
+DEFAULT_ANALYTICS = AnalyticsConfig()
+>>>>>>> 1687b64 (Phase 5 analytics parts and some minor changes)
