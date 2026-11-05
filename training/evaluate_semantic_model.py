@@ -93,8 +93,10 @@ def evaluate(model_dir: Path = MODEL_DIR, real_files: list[Path] | None = None) 
     seen = {normalise(n) for n in train["name"]}
     unseen = real[[normalise(n) not in seen for n in real["name"]]]
     real_unseen = _compare(unseen["name"].tolist(), unseen["role"].tolist(), model)
+
     unseen_dom = build_unseen_domain(SEED)
     dom = _compare(unseen_dom["name"].tolist(), unseen_dom["role"].tolist(), model)
+
     e2e = _end_to_end(real_files, model) if real_files else None
     meta = json.loads((model_dir / "semantic_model.meta.json").read_text(encoding="utf-8"))
     out = {"model_version": status.version, "model_sha256": meta["sha256"], "seed": SEED,

@@ -86,7 +86,9 @@ Known limits: scores are heuristics; domain for supply-chain data may read as Re
 | tests/test_semantic_training.py | 10 tests |
 
 ### Evaluation result after expanding the training names (author's sandbox, seed 42)
+
 Training names: 1,246 distinct base names (was 367), with short forms, prefixes, suffixes and varied separators.
+
 | Test set | Trained model | Rules by name only |
 |---|---|---|
 | Held-out synthetic names (n=5,507) | 86.0% | 57.9% |
@@ -103,7 +105,6 @@ confidence and rarely overturns a confident rule. The honest test is your own ne
 ## Phase 4 batch C not verified
 Streamlit rendering of the new pages (only a stubbed-Streamlit smoke test was run), tests/test_app_startup.py
 (needs Streamlit; the sample-data test now relies on the Overview page), training on Windows, scikit-learn versions other than the sandbox's.
-
 
 ## Phase 5 files
 | Path | Purpose |

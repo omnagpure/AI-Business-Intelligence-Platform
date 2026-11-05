@@ -16,7 +16,9 @@ from semantic.trained_name_model import (META_FILE, MODEL_DIR, MODEL_FILE, SCHEM
                                          sha256_file)
 from training.make_data import SEED, build_datasets, label_distribution
 
-C_GRID = (1.0, 3.0, 10.0)
+C_GRID = (1.0, 3.0, 10.0, 30.0)
+
+
 
 
 def build_pipeline(c: float):
@@ -44,7 +46,9 @@ def choose_c(train, seed: int) -> tuple[float, dict[float, float]]:
         for tr, va in gkf.split(train["name"], train["role"], groups=train["base"]):
             p = build_pipeline(c).fit(train["name"].iloc[tr], train["role"].iloc[tr])
             fold.append(f1_score(train["role"].iloc[va], p.predict(train["name"].iloc[va]), average="macro"))
+       
         scores[c] = round(float(sum(fold) / len(fold)), 4)
+
     return max(scores, key=lambda k: (scores[k], -k)), scores
 
 
@@ -84,6 +88,7 @@ def main() -> None:
     print(f"Saved model {meta['model_version']} to {a.out}")
     print(f"Chosen C={meta['C']} (grouped CV macro-F1 by C: {meta['cv_macro_f1_by_C']})")
     print(f"Trained on {meta['train_rows']} names from {meta['train_base_names']} distinct base names")
+  
     print("Next: python -m training.evaluate_semantic_model")
 
 

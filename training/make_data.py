@@ -29,7 +29,6 @@ SEED = 42
 DATA_DIR = Path(__file__).resolve().parent / "data"
 TEST_FRACTION = 0.3
 VARIANTS_PER_BASE = 12
-
 SEED_NAMES: dict[str, str] = {
     "revenue": "total sales, net revenue, gross sales, sales amount, order total, invoice amount, turnover, gmv, "
                "income, billing amount, revenue usd, sales value, amt net, txn amount, subscription revenue, mrr, "
@@ -107,8 +106,6 @@ SEED_NAMES: dict[str, str] = {
                "aux, z, f1, f2, attr7, column 12, data, value1, val, metric a, param, q, k, extra, spare, "
                "zz, abc, flag3, v10, unnamed 12",
 }
-
-
 # More names, written to cover more industries and the messy styles seen in real exports.
 SEED_NAMES_EXTRA: dict[str, str] = {
     "revenue": "gross revenue, sales revenue, total income, rental income, tuition fees, license revenue, commission earned, "
@@ -313,7 +310,6 @@ UNSEEN_DOMAIN_NAMES: dict[str, str] = {
     "text": "doctor remarks, clinical remarks, teacher remarks, report card comment, farm notes, field observation, technician notes, outage description, property description, listing description, agent remarks, interview feedback, performance review text, exit interview notes, resume summary",
     "unknown": "zz1, v7, v8, col9, col 10, field e, field f, tmpcol, misc 3, extra 4, unnamed 15, unnamed 20, x9, x11, attr9, column 15",
 }
-
 # Hand-labelled headers from the public supply-chain files used while building this project.
 # Ambiguous columns (for example "Order Item Discount", "SKU_ID") and personal-data columns are left out
 # on purpose. These labels are one person's judgement, not ground truth. Never used for training.
@@ -383,7 +379,6 @@ _ABBR: dict[str, list[str]] = {
 _STYLES = ["snake", "camel", "pascal", "upper", "title_snake", "kebab", "title", "lower_space", "concat", "dot", "upper_concat"]
 _STYLE_WEIGHTS = [30, 10, 8, 14, 6, 3, 10, 7, 5, 4, 3]
 
-
 def normalise(name: str) -> str:
     return " ".join(tokenize(name))
 
@@ -407,6 +402,32 @@ def _render(tokens: list[str], style: str) -> str:
         return tokens[0] + "".join(t.capitalize() for t in tokens[1:])
     if style == "pascal":
         return "".join(t.capitalize() for t in tokens)
+    return "".join(tokens)       # concat
+
+
+def _variants(tokens: list[str], rng: random.Random, n: int) -> list[str]:
+    out: list[str] = []
+    for i in range(n):
+        toks = list(tokens)
+        pre, suf = rng.choice(_PREFIXES), rng.choice(_SUFFIXES)
+        if i >= 2:               # keep a couple of clean variants per base name
+            toks = ([pre] if pre else []) + toks + ([suf] if suf else [])
+        out.append(_render(toks, _STYLES[i % len(_STYLES)] if i < len(_STYLES) else rng.choice(_STYLES)))
+    return list(dict.fromkeys(out))
+
+
+def _bases() -> list[tuple[str, str, tuple[str, ...]]]:
+    """(role, base name, token key) with ambiguous duplicates removed."""
+    seen: dict[tuple[str, ...], set[str]] = {}
+    items = []
+    for role, text in SEED_NAMES.items():
+        for raw in (s.strip() for s in text.split(",")):
+            if not raw:
+                continue
+            key = tuple(sorted(set(tokenize(raw))))
+            seen.setdefault(key, set()).add(role)
+            items.append((role, raw, key))
+    return [(r, b, k) for r, b, k in items if len(seen[k]) == 1 and r in ROLES]
     if style == "upper_concat":
         return "".join(tokens).upper()
     return "".join(tokens)       # concat
@@ -455,7 +476,6 @@ def _bases(source: dict[str, str] | None = None) -> list[tuple[str, str, tuple[s
             roles_of.setdefault(key, set()).add(role)
             first.setdefault(key, (role, raw))
     return [(r, b, k) for k, (r, b) in first.items() if len(roles_of[k]) == 1 and r in ROLES]
-
 
 def build_datasets(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return (train, test) frames with columns name, role, base. Disjoint by base name."""
@@ -516,6 +536,7 @@ def main() -> None:
     print(f"test : {len(test)} rows from {test['base'].nunique()} base names (disjoint from train)")
     print(f"real : {len(REAL_HEADERS)} hand-labelled headers (evaluation only)")
     print(f"unseen domains: {len(unseen)} rows from {unseen['base'].nunique()} base names (evaluation only)")
+
     print("train label counts:", label_distribution(train))
     print(f"written to {a.out}")
 

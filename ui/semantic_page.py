@@ -189,13 +189,17 @@ def _render_model_tab() -> None:
         st.markdown("**Evaluation on names it never saw** (model vs the rules using names alone)")
         st.dataframe(pd.DataFrame([
             {"Test set": f"Held-out synthetic names (n={m['held_out_n']})",
-             "Trained model": _pct_str(m["held_out_accuracy"]), "Rules, names only": _pct_str(m["baseline_accuracy"])},
+             "Trained model": _pct_str(m["held_out_accuracy"]),
+             "Rules, names only": _pct_str(m["baseline_accuracy"])},
             {"Test set": f"Hand-labelled real headers (n={m['real_headers_n']})",
-             "Trained model": _pct_str(m["real_headers_accuracy"]), "Rules, names only": _pct_str(m["real_baseline_accuracy"])},
-        ] + ([{"Test set": f"Names from industries it never trained on (n={m['unseen_domain_n']})",
-               "Trained model": _pct_str(m["unseen_domain_accuracy"]),
-               "Rules, names only": _pct_str(m["unseen_domain_baseline_accuracy"])}] if "unseen_domain_n" in m else [])),
-            hide_index=True)
+             "Trained model": _pct_str(m["real_headers_accuracy"]),
+             "Rules, names only": _pct_str(m["real_baseline_accuracy"])},
+        ] + ([{
+            "Test set": f"Names from industries it never trained on (n={m['unseen_domain_n']})",
+            "Trained model": _pct_str(m["unseen_domain_accuracy"]),
+            "Rules, names only": _pct_str(m["unseen_domain_baseline_accuracy"])
+        }] if "unseen_domain_n" in m else [])), hide_index=True)
+
         st.caption("Synthetic and hand-labelled names only. This does not measure accuracy on your own data. "
                    "Where the model does not beat the rules, treat it as a second opinion, not an upgrade.")
     else:

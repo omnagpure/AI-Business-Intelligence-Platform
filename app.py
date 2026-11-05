@@ -68,10 +68,12 @@ def main() -> None:
             st.Page(config, title="Settings", url_path="settings", icon=":material/settings:"),
         ],
     })
+
     try:
         st.logo(str(Path(__file__).parent / "assets" / "logo.svg"), size="large")
-    except Exception:  # a missing or unsupported logo must never stop the app
+    except Exception:
         pass
+
     render_sidebar_footer()
     nav.run()
 
