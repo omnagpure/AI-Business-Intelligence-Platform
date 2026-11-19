@@ -11,7 +11,7 @@ from core.logging_config import get_logger
 from ingestion.file_loader import fingerprint_bytes, list_excel_sheets
 from ingestion.pipeline import ingest_bytes, ingest_sample
 from storage import repository
-from ui import auth_state, state
+from ui import auth_state, notify, state
 from ui.progress_bar import ProgressBar
 from ui.layout import empty_state, fmt_int, md_escape, page_title
 
@@ -42,25 +42,36 @@ def _when(ts: float) -> str:
     return datetime.fromtimestamp(ts).strftime("%d %b %Y, %H:%M")
 
 
-def _open_saved(settings: Settings, dataset_id: str) -> None:
+def open_saved(settings: Settings, dataset_id: str, quiet: bool = False) -> bool:
+    """Make one of the signed-in user's saved datasets the active one. Returns True on success; the caller reruns.
+    quiet: do not show errors (used when reopening the last dataset automatically)."""
     user = auth_state.require_user()
     try:
         rec, data = repository.read_dataset(user.id, dataset_id)          # ownership is checked here
-        with st.spinner("Opening dataset..."):
+        with st.spinner(f"Opening {rec.filename}..."):
             loaded = ingest_bytes(data, rec.filename, max_bytes=settings.max_upload_bytes, sheet=rec.sheet)
     except repository.NotFound:
-        st.error("That dataset is no longer available.")
-        return
+        if not quiet:
+            st.error("That dataset is no longer available.")
+        return False
     except BIError as exc:
-        st.error(exc.user_message)
-        return
+        if not quiet:
+            st.error(exc.user_message)
+        return False
     except Exception:
         log.exception("Could not open a saved dataset")
-        st.error("The saved dataset could not be opened. Details were written to the application log.")
-        return
+        if not quiet:
+            st.error("The saved dataset could not be opened. Details were written to the application log.")
+        return False
     _reset_uploader()
     state.set_result(loaded, dataset_id=rec.id)
-    st.rerun()
+    return True
+
+
+def _open_saved(settings: Settings, dataset_id: str) -> None:
+    if open_saved(settings, dataset_id):
+        notify.toast(f"Opened {state.get_result().dataset.filename}")
+        st.rerun()
 
 
 def _saved_datasets(settings: Settings) -> None:
@@ -69,7 +80,7 @@ def _saved_datasets(settings: Settings) -> None:
     records = repository.list_datasets(user.id)
     st.subheader("Your datasets")
     if not records:
-        st.caption("Files you upload are saved to your account, so you can reopen them later.")
+        st.caption("No saved datasets yet.")
         return
     active = state.get_dataset_id()
     for rec in records:
@@ -91,6 +102,7 @@ def _saved_datasets(settings: Settings) -> None:
                         pass
                     if rec.id == active:
                         state.clear_result()
+                    notify.toast(f"Deleted {rec.filename}")
                     st.rerun()
 
 

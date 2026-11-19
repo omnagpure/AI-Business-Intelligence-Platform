@@ -81,8 +81,7 @@ def _render_cleaning(result, settings: Settings) -> None:
     if not proposals:
         st.success("No cleaning actions are suggested for this dataset.")
         return
-    st.caption("Tick the actions to apply, then press Apply. Only safe format fixes are pre-ticked; "
-               "anything that fills values, caps outliers or removes rows or columns is your decision.")
+    st.caption("Only safe format fixes are pre-ticked.")
     table = pd.DataFrame([{
         "id": a.id, "Apply": a.selected_by_default, "Column": a.column or "(all columns)",
         "Found": a.condition, "Proposed action": a.proposed_action, "Rows affected": a.affected_rows,
@@ -129,7 +128,6 @@ def _render_cleaning(result, settings: Settings) -> None:
         st.dataframe(pd.DataFrame(rows, columns=["Measure", "Original", "Cleaned"]), hide_index=True)
         if r.skipped_count:
             st.info(f"{r.skipped_count} action(s) were skipped. See the History tab for the reasons.")
-        st.caption("Cleaned data is now the active dataset for later analysis. Open History to download it.")
 
 
 def _render_history() -> None:

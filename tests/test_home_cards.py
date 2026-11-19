@@ -7,7 +7,7 @@ from streamlit.testing.v1 import AppTest
 
 from ui import home_cards as hc
 
-APP = str(Path(__file__).resolve().parent.parent / "app.py")
+APP = str(Path(__file__).resolve().parent.parent / "tessaly_app.py")
 
 
 def _cards(html):
@@ -17,7 +17,7 @@ def _cards(html):
 
 def test_home_shows_five_cards_with_real_results_or_reasons():
     at = AppTest.from_file(APP, default_timeout=120).run()
-    at.button[0].click().run()
+    at.button(key="home_sample").click().run()
     assert not at.exception, [e.value for e in at.exception]
     cards = _cards(" ".join(m.value for m in at.markdown))
     assert set(cards) == {"Forecast", "Anomalies", "Segments", "Drivers", "Explorer"}

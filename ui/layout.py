@@ -1,46 +1,53 @@
-"""Design system: tokens, global CSS and the small set of shared UI helpers.
+"""Design system: global CSS on top of the theme tokens, and the small set of shared UI helpers.
 
-Direction: neutral near-black surfaces, hairline borders, one muted teal accent, Inter type,
-flat stat strips instead of boxed cards. Pages should use these helpers rather than ad-hoc CSS.
+Direction (Tessaly): warm neutral surfaces, hairline borders, one vermilion accent, Geist type, light and dark from
+the same tokens (ui.theme). Pages use these helpers rather than ad-hoc CSS.
 """
 from __future__ import annotations
 
 from html import escape
+from pathlib import Path
 
 import streamlit as st
 
 from config.settings import APP_NAME
+from ui import theme
+
+_FAVICON = str(Path(__file__).resolve().parent.parent / "assets" / "favicon.png")
 
 _CSS = """
 <style>
-:root{
-  --bg:#0B0D10; --surface:#0F1215; --surface-2:#14181D; --line:#1F242B; --line-2:#2A3038;
-  --text:#E6E8EB; --muted:#98A1AD; --faint:#7A838F;
-  --accent:#3DA58A; --accent-hi:#4FBC9F; --warn:#D6A04A; --danger:#E5484D; --r:6px;
-}
+:root{--r:8px; --r-lg:12px;}
 html, body, .stApp, [data-testid="stAppViewContainer"], button, input, textarea, select {
-  font-family:'Inter',-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif !important;
-  -webkit-font-smoothing:antialiased; font-feature-settings:'cv11','ss03';
+  font-family:'Geist',-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif !important;
+  -webkit-font-smoothing:antialiased;
 }
+.stApp {background:var(--bg);}
 #MainMenu, footer, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {display:none;}
-header[data-testid="stHeader"] {background:transparent; height:2.5rem;}
-.block-container {padding:2.75rem 2.5rem 4rem; max-width:1240px;}
+header[data-testid="stHeader"] {background:transparent; height:2.25rem;}
+.block-container {padding:1.25rem 2.5rem 4rem; max-width:1280px;}
+::selection {background:var(--accent-soft);}
+
+/* top bar: dataset switcher on the left, user menu on the right */
+.st-key-topbar {padding:.15rem 0 .9rem; margin-bottom:1.4rem; border-bottom:1px solid var(--line);}
+.st-key-topbar [data-testid="stSelectbox"] {min-width:240px; max-width:340px;}
+.tb-meta {display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; font-size:.8125rem; color:var(--muted); white-space:nowrap;}
+.tb-meta .sep {color:var(--line-2);}
+.tb-user {display:flex; flex-direction:column; gap:.1rem; padding:.15rem 0 .55rem; border-bottom:1px solid var(--line); margin-bottom:.35rem;}
+.tb-user b {font-size:.9rem; font-weight:600; color:var(--text);}
+.tb-user span {font-size:.8rem; color:var(--muted);}
 
 /* page header */
-.pg-head {padding-bottom:1.1rem; margin-bottom:1.4rem; border-bottom:1px solid var(--line);}
-.pg-title {font-size:1.5rem !important; font-weight:600 !important; letter-spacing:-.02em; line-height:1.25 !important; margin:0 !important; padding:0 !important; color:var(--text);}
-.pg-sub {margin:.4rem 0 0 !important; font-size:.9rem !important; color:var(--muted); line-height:1.55; max-width:68ch;}
-h2, h3 {font-size:.95rem !important; font-weight:600 !important; letter-spacing:-.005em; margin-top:1.6rem !important;}
-.eyebrow {font-size:.8125rem; font-weight:500; color:var(--muted); margin-bottom:.4rem;}
-.ctx-line {display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; font-size:.8125rem; color:var(--muted); margin:-.5rem 0 1.25rem;}
-.ctx-line b {color:var(--text); font-weight:600; font-size:.875rem;}
-.ctx-dot {width:7px; height:7px; border-radius:50%; background:var(--accent); display:inline-block;}
-.ctx-warn {color:var(--warn);}
+.pg-head {margin:0 0 1.35rem;}
+.pg-title {font-size:1.6rem !important; font-weight:600 !important; letter-spacing:-.025em; line-height:1.2 !important; margin:0 !important;
+  padding:0 !important; color:var(--text);}
+h2, h3 {font-size:1rem !important; font-weight:600 !important; letter-spacing:-.01em; margin-top:1.6rem !important; color:var(--text);}
+.eyebrow {font-size:.875rem; font-weight:600; color:var(--text); margin:.2rem 0 .6rem; letter-spacing:-.005em;}
 .card-k {font-size:.78rem; font-weight:500; color:var(--muted);}
 .card-t {font-size:1rem; font-weight:600; letter-spacing:-.01em; color:var(--text); margin-top:.2rem; line-height:1.35; min-height:2.7em;}
 .card-t.card-skip {color:var(--muted); font-weight:500;}
 .card-d {font-size:.8125rem; color:var(--muted); margin:.35rem 0 .7rem; line-height:1.5; min-height:3em;}
-.next-k {font-size:.78rem; font-weight:500; color:var(--accent-hi);}
+.next-k {font-size:.78rem; font-weight:600; color:var(--accent);}
 .next-t {font-size:1.1rem; font-weight:600; letter-spacing:-.01em; color:var(--text); margin-top:.15rem;}
 .next-d {font-size:.875rem; color:var(--muted); margin-top:.25rem; line-height:1.5;}
 .kv-title {font-size:1.125rem; font-weight:600; letter-spacing:-.01em; color:var(--text); display:flex; gap:.6rem; align-items:center; flex-wrap:wrap;}
@@ -49,93 +56,104 @@ h2, h3 {font-size:.95rem !important; font-weight:600 !important; letter-spacing:
 .note-list li::before {content:""; position:absolute; left:0; top:.62em; width:4px; height:1px; background:var(--faint);}
 [data-testid="stCaptionContainer"] {color:var(--muted); font-size:.8125rem;}
 
-/* stat strip: a row of metrics becomes one bordered strip with hairline dividers */
-div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
-  gap:0; border:1px solid var(--line); border-radius:var(--r); background:var(--surface); overflow:hidden;}
-div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="stColumn"],
-div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="column"] {
-  padding:.85rem 1.1rem; border-left:1px solid var(--line); min-width:0;}
-div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > :first-child {border-left:none;}
+/* metric rows: one bordered strip with hairline dividers */
+div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMetric"]) {
+  gap:0; border:1px solid var(--line); border-radius:var(--r-lg); background:var(--surface); overflow:hidden; box-shadow:var(--shadow);}
+div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMetric"]) > [data-testid="stColumn"] {
+  padding:.95rem 1.15rem; border-left:1px solid var(--line); min-width:0;}
+div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMetric"]) > :first-child {border-left:none;}
 [data-testid="stMetric"] {padding:0;}
-[data-testid="stMetricLabel"] p {font-size:.75rem; font-weight:450; color:var(--muted);}
-[data-testid="stMetricValue"] {font-size:1.35rem; font-weight:600; letter-spacing:-.015em; font-variant-numeric:tabular-nums;}
+[data-testid="stMetricLabel"] p {font-size:.78rem; font-weight:500; color:var(--muted);}
+[data-testid="stMetricValue"] {font-size:1.5rem; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums; color:var(--text);}
+[data-testid="stMetricDelta"] {font-size:.78rem; font-weight:500;}
+/* text values ("0 high · 3 medium · 2 low", a domain name) wrap instead of being cut off */
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {white-space:normal !important; overflow:visible !important;
+  text-overflow:clip !important; overflow-wrap:anywhere; line-height:1.2;}
+
+/* KPI tiles: separate cards (value, change, sparkline) in a grid */
+.st-key-kpi_grid div[data-testid="stHorizontalBlock"] {gap:.85rem !important; border:none !important; background:transparent !important;
+  box-shadow:none !important; overflow:visible !important; margin-bottom:.85rem;}
+.st-key-kpi_grid div[data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {padding:0 !important; border:none !important;}
+.st-key-kpi_grid [data-testid="stMetric"] {background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg);
+  padding:1rem 1.1rem .8rem; box-shadow:var(--shadow); height:100%; transition:border-color .15s ease;}
+.st-key-kpi_grid [data-testid="stMetric"]:hover {border-color:var(--line-2);}
 
 /* tabs */
-button[data-baseweb="tab"] {font-size:.84rem; font-weight:450; color:var(--muted); padding:.55rem .95rem; height:auto;}
-button[data-baseweb="tab"][aria-selected="true"] {color:var(--text); font-weight:500;}
+button[data-baseweb="tab"] {font-size:.875rem; font-weight:500; color:var(--muted); padding:.55rem .95rem; height:auto;}
+button[data-baseweb="tab"][aria-selected="true"] {color:var(--text); font-weight:600;}
 [data-baseweb="tab-highlight"] {background:var(--accent) !important; height:2px !important;}
 [data-baseweb="tab-border"] {background:var(--line) !important; height:1px !important;}
 
 /* buttons and inputs */
-.stButton > button, .stDownloadButton > button {
-  border:1px solid var(--line-2); background:transparent; color:var(--text); border-radius:var(--r);
-  font-size:.84rem; font-weight:500; min-height:2.1rem; padding:0 .9rem; box-shadow:none;
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
+  border:1px solid var(--line-2); background:var(--surface); color:var(--text); border-radius:var(--r);
+  font-size:.875rem; font-weight:500; min-height:2.2rem; padding:0 .95rem; box-shadow:0 1px 0 rgba(0,0,0,.03);
   transition:border-color .12s, background-color .12s;}
-.stButton > button:hover, .stDownloadButton > button:hover {border-color:var(--faint); background:var(--surface-2); color:var(--text);}
+.stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {border-color:var(--faint); background:var(--surface-2); color:var(--text);}
 .stButton > button:focus-visible, .stDownloadButton > button:focus-visible {outline:2px solid var(--accent); outline-offset:2px;}
-.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
-  background:var(--accent); border-color:var(--accent); color:#07120E;}
-.stButton > button[kind="primary"]:hover {background:var(--accent-hi); border-color:var(--accent-hi); color:#07120E;}
+.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"], .stFormSubmitButton > button[kind="primaryFormSubmit"] {
+  background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600;}
+.stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover,
+.stFormSubmitButton > button[kind="primaryFormSubmit"]:hover {background:var(--accent-hi); border-color:var(--accent-hi); color:var(--on-accent);}
+.stButton > button[kind="tertiary"] {border:none; background:transparent; box-shadow:none; color:var(--accent); padding:0; min-height:auto;}
+.stButton > button[kind="tertiary"]:hover {background:transparent; color:var(--accent-hi); text-decoration:underline; text-underline-offset:3px;}
 .stButton > button:disabled {opacity:.45;}
 [data-baseweb="select"] > div, [data-baseweb="input"] > div, [data-baseweb="textarea"] {border-radius:var(--r) !important;}
-[data-testid="stFileUploaderDropzone"] {border:1px dashed var(--line-2); background:var(--surface); border-radius:8px; padding:1.4rem;}
-[data-testid="stFileUploaderDropzone"]:hover {border-color:var(--faint);}
+[data-testid="stFileUploaderDropzone"] {border:1.5px dashed var(--line-2); background:var(--surface); border-radius:var(--r-lg); padding:1.4rem;}
+[data-testid="stFileUploaderDropzone"]:hover {border-color:var(--accent-line); background:var(--accent-soft);}
 
 /* data surfaces */
 [data-testid="stDataFrame"], [data-testid="stDataEditor"] {border:1px solid var(--line); border-radius:var(--r); overflow:hidden;}
-[data-testid="stAlert"] {border-radius:var(--r); border:1px solid var(--line-2); font-size:.84rem;}
-[data-testid="stExpander"] {border:1px solid var(--line); border-radius:var(--r);}
-[data-testid="stExpander"] summary {font-size:.84rem; color:var(--muted);}
+[data-testid="stAlert"] {border-radius:var(--r); font-size:.875rem;}
+[data-testid="stExpander"] details {border:1px solid var(--line) !important; border-radius:var(--r) !important; background:var(--surface);}
+[data-testid="stExpander"] summary {font-size:.875rem; color:var(--text); font-weight:500;}
+[data-testid="stPlotlyChart"] {border:1px solid var(--line); border-radius:var(--r-lg); background:var(--surface); padding:.35rem .5rem .1rem;
+  box-shadow:var(--shadow);}
 hr {border-color:var(--line) !important; margin:1.5rem 0 !important;}
 
 /* sidebar */
-section[data-testid="stSidebar"] {border-right:1px solid var(--line); background:var(--bg);}
 section[data-testid="stSidebar"][aria-expanded="true"] {width:248px !important; min-width:248px !important;}
-[data-testid="stSidebarNavLink"] {border-radius:var(--r); padding:.42rem .65rem; font-size:.875rem; color:var(--muted); transition:background-color .12s, color .12s;}
+[data-testid="stSidebarNavLink"] {border-radius:var(--r); padding:.38rem .65rem; font-size:.875rem; color:var(--muted); transition:background-color .12s, color .12s;}
 [data-testid="stSidebarNavLink"]:hover {background:var(--surface-2); color:var(--text);}
-[data-testid="stSidebarNavLink"][aria-current="page"] {background:var(--surface-2); color:var(--text); font-weight:500; box-shadow:inset 2px 0 0 var(--accent);}
-[data-testid="stNavSectionHeader"] {font-size:.78rem !important; font-weight:500 !important; color:var(--faint) !important; padding-top:.6rem;}
-.sb-user {display:flex; gap:.6rem; align-items:center; padding:.15rem .1rem .35rem; min-width:0;}
-.sb-av {flex:none; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; font-size:.72rem; font-weight:600;
-  color:var(--accent-hi); background:rgba(61,165,138,.12); border:1px solid rgba(61,165,138,.35);}
-.sb-id {display:flex; flex-direction:column; min-width:0; line-height:1.3;}
-.sb-id b {font-size:.82rem; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-.sb-id span {font-size:.72rem; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+[data-testid="stSidebarNavLink"][aria-current="page"] {background:var(--accent-soft); font-weight:600;}
+[data-testid="stSidebarNavLink"][aria-current="page"] span {color:var(--accent) !important;}
+[data-testid="stNavSectionHeader"] {font-size:.75rem !important; font-weight:600 !important; color:var(--faint) !important; padding-top:.7rem;}
 
 /* badges and empty state */
-.badge {display:inline-block; font-size:.6875rem; font-weight:500; line-height:1; padding:.28rem .5rem; border-radius:4px;
-  border:1px solid var(--line-2); color:var(--muted); letter-spacing:.01em; white-space:nowrap;}
-.badge.accent {color:var(--accent-hi); border-color:rgba(61,165,138,.4); background:rgba(61,165,138,.08);}
-.badge.warn {color:var(--warn); border-color:rgba(214,160,74,.4); background:rgba(214,160,74,.08);}
-.badge.danger {color:var(--danger); border-color:rgba(229,72,77,.4); background:rgba(229,72,77,.08);}
-.empty {border:1px dashed var(--line-2); border-radius:8px; padding:1.6rem 1.5rem; background:var(--surface);}
+.badge {display:inline-block; font-size:.6875rem; font-weight:600; line-height:1; padding:.3rem .55rem; border-radius:999px;
+  border:1px solid var(--line-2); color:var(--muted); background:var(--surface); white-space:nowrap;}
+.badge.accent {color:var(--accent); border-color:var(--accent-line); background:var(--accent-soft);}
+.badge.warn {color:var(--warn); border-color:transparent; background:var(--warn-soft);}
+.badge.danger {color:var(--danger); border-color:transparent; background:var(--danger-soft);}
+.badge.ok {color:var(--ok); border-color:transparent; background:var(--ok-soft);}
+.empty {border:1px solid var(--line); border-radius:var(--r-lg); padding:1.4rem 1.5rem; background:var(--surface); box-shadow:var(--shadow);}
 .empty-t {font-size:.95rem; font-weight:600; color:var(--text);}
-.empty-d {font-size:.84rem; color:var(--muted); margin-top:.25rem; line-height:1.5;}
+.empty-d {font-size:.875rem; color:var(--muted); margin:.2rem 0 .3rem; line-height:1.5;}
 
 /* workflow steps and role chips */
 .steps {display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:0; border:1px solid var(--line);
-  border-radius:var(--r); background:var(--surface); overflow:hidden;}
-.step {padding:.85rem 1rem; border-left:1px solid var(--line); min-width:0;}
+  border-radius:var(--r-lg); background:var(--surface); overflow:hidden; box-shadow:var(--shadow);}
+.step {padding:.9rem 1.05rem; border-left:1px solid var(--line); min-width:0;}
 .step:first-child {border-left:none;}
-.step-n {font-size:.78rem; color:var(--faint); display:flex; gap:.45rem; align-items:center;}
+.step-n {font-size:.78rem; color:var(--faint); display:flex; gap:.45rem; align-items:center; font-variant-numeric:tabular-nums;}
 .dot {width:7px; height:7px; border-radius:50%; background:var(--line-2); display:inline-block;}
-.dot.done {background:var(--accent);} .dot.todo {background:var(--warn);} .dot.soon {background:var(--line-2);}
+.dot.done {background:var(--ok);} .dot.todo {background:var(--accent);} .dot.soon {background:var(--line-2);}
 .step-t {font-size:.9rem; font-weight:600; color:var(--text); margin-top:.3rem;}
-.step-d {font-size:.78rem; color:var(--muted); margin-top:.15rem; line-height:1.45;}
+.step-d {font-size:.8rem; color:var(--muted); margin-top:.15rem; line-height:1.45;}
 .chips {display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem;}
-.chip {font-size:.75rem; padding:.22rem .5rem; border-radius:4px; background:var(--surface-2); border:1px solid var(--line); color:var(--text);}
+.chip {font-size:.75rem; padding:.24rem .55rem; border-radius:999px; background:var(--surface-2); border:1px solid var(--line); color:var(--text);}
 .chip b {font-weight:500; color:var(--muted); margin-right:.35rem;}
-[data-testid="stVerticalBlockBorderWrapper"] {border-color:var(--line) !important; border-radius:var(--r) !important;}
 
 @media (max-width: 900px) {
-  .block-container {padding:1.25rem 1rem 3rem;}
-  .pg-title {font-size:1.3rem !important;}
+  .block-container {padding:1rem 1rem 3rem;}
+  .pg-title {font-size:1.35rem !important;}
+  .st-key-topbar [data-testid="stSelectbox"] {min-width:0; max-width:none;}
 }
 @media (max-width: 640px) {
-  div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="stColumn"],
-  div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="column"] {
+  div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMetric"]) > [data-testid="stColumn"] {
     border-left:none; border-top:1px solid var(--line);}
-  div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > :first-child {border-top:none;}
+  div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMetric"]) > :first-child {border-top:none;}
+  .tb-meta {display:none;}
 }
 @media (prefers-reduced-motion: reduce) { * {transition:none !important;} }
 </style>
@@ -143,38 +161,35 @@ section[data-testid="stSidebar"][aria-expanded="true"] {width:248px !important; 
 
 
 def configure_page(sidebar: bool = True) -> None:
-    st.set_page_config(page_title=APP_NAME, layout="wide", initial_sidebar_state="expanded" if sidebar else "collapsed")
+    st.set_page_config(page_title=APP_NAME, page_icon=_FAVICON, layout="wide",
+                       initial_sidebar_state="expanded" if sidebar else "collapsed")
+    theme.handle_request()                      # a light/dark switch picked on the previous run
+    st.html(f"<style>{theme.token_css()}</style>")
     st.markdown(_CSS, unsafe_allow_html=True)
 
 
 def page_title(title: str, caption: str = "") -> None:
-    """Page header. A div with a heading role, so Streamlit's own h1 styles cannot override the type scale.
-
-    A caption that only repeats the active file name is dropped: the context line already shows it."""
-    from ui import state
-    result = state.get_result()
-    if caption and result is not None and result.dataset.filename in caption:
-        caption = ""
-    sub = f'<p class="pg-sub">{escape(caption)}</p>' if caption else ""
-    st.markdown(f'<div class="pg-head"><div class="pg-title" role="heading" aria-level="1">{escape(title)}</div>{sub}</div>',
+    """Page header: the title only. A description, when given, is shown on hover instead of as a subtitle line."""
+    tip = f' title="{escape(caption)}"' if caption else ""
+    st.markdown(f'<div class="pg-head"><div class="pg-title" role="heading" aria-level="1"{tip}>{escape(title)}</div></div>',
                 unsafe_allow_html=True)
 
 
-def context_line() -> None:
-    """One quiet line above every page: the active dataset. Text only, no buttons."""
+def dataset_meta_html() -> str:
+    """Rows, columns and status of the active dataset, shown in the top bar. Empty when nothing is loaded."""
     from ui import state
     result = state.get_result()
     if result is None:
-        return
+        return ""
     ds, prof = result.dataset, result.profile
-    cs = state.get_cleaning()
-    extra = ""
+    parts = [f"{fmt_int(prof.rows)} rows", f"{prof.columns} columns"]
+    badges = ""
     if ds.is_sample:
-        extra += ' · <span class="ctx-warn">synthetic sample data</span>'
-    if cs is not None:
-        extra += f" · cleaned data ({cs.result.applied_count} step(s) applied)"
-    st.markdown(f'<div class="ctx-line"><span class="ctx-dot"></span><b>{escape(ds.filename)}</b>'
-                f"<span>{fmt_int(prof.rows)} rows · {prof.columns} columns{extra}</span></div>", unsafe_allow_html=True)
+        badges += " " + badge("Sample data", "warn")
+    if state.get_cleaning() is not None:
+        badges += " " + badge("Cleaned", "ok")
+    sep = '<span class="sep">·</span>'
+    return f'<div class="tb-meta ctx-line">{sep.join(f"<span>{p}</span>" for p in parts)}{badges}</div>'
 
 
 def eyebrow(text: str) -> None:
@@ -196,7 +211,13 @@ def empty_state(title: str, description: str) -> None:
 
 
 def no_dataset_notice() -> None:
-    empty_state("No dataset loaded", "Open Upload in the sidebar and add a CSV or Excel file, or load the sample data.")
+    """One line and one action, instead of instructions."""
+    from ui import nav
+    with st.container(border=True):
+        st.markdown('<div class="empty-t">No data yet</div><div class="empty-d">Upload a CSV or Excel file to get started.</div>',
+                    unsafe_allow_html=True)
+        if st.button("Upload a file", type="primary", key="nd_upload", icon=":material/upload:"):
+            nav.go("upload")
 
 
 def fmt_int(n: int) -> str:

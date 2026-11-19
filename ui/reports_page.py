@@ -13,7 +13,7 @@ from core.logging_config import get_logger
 from reporting.assembly import ReportContext, Sources, assemble_report
 from reporting.report_builder import safe_filename
 from storage import repository
-from ui import auth_state, state
+from ui import auth_state, notify, state
 from ui.analytics_state import base_key
 from ui.layout import empty_state, md_escape, no_dataset_notice, page_title
 from ui.progress_bar import ProgressBar
@@ -72,7 +72,7 @@ def _history() -> None:
     st.write("")
     st.subheader("Report history")
     if not records:
-        st.caption("Reports you build are saved here, so you can download them again later.")
+        st.caption("No reports yet.")
         return
     for rec in records:
         with st.container(border=True):
@@ -90,6 +90,7 @@ def _history() -> None:
                         repository.delete_report(user.id, rec.id)
                     except repository.NotFound:
                         pass
+                    notify.toast("Report deleted")
                     st.rerun()
 
 
@@ -116,8 +117,6 @@ def _render_current() -> None:
         empty_state("Nothing to report", "The active dataset has no rows.")
         return
 
-    st.caption("The PDF report contains only figures computed from your data. Analyses that cannot run on this data are listed as "
-               "not included, with the reason.")
     c1, c2 = st.columns(2)
     title = c1.text_input("Report title", value="Business Intelligence Report", max_chars=90, key="rep_title")
     prepared = c2.text_input("Prepared for (optional)", value="", max_chars=80, key="rep_for")

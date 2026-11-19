@@ -1,69 +1,53 @@
 """Public homepage. Static content only: it reads no user data and needs no session.
 
-Every capability described here exists in the platform (see README "Features"); nothing is invented, and the
-product preview is labelled as using synthetic figures.
+Every capability described here exists in the product (see README "Features"); nothing is invented. The picture in
+the hero is a real screenshot of the Dashboard page, taken with the built-in synthetic sample dataset, and says so.
 """
 from __future__ import annotations
 
-import base64
-
 import streamlit as st
 
-from ui.public_ui import apply_public_theme, brand, footer, icon
+from config.settings import APP_NAME
+from ui.public_ui import ASSETS, apply_public_theme, brand, footer, icon, theme_switch, themed_img
+
+SCREENSHOT = "screen-dashboard"          # assets/screen-dashboard-light.webp and -dark.webp
 
 FEATURES = [
     ("analysis", "Intelligent data analysis",
-     "Profiles every column, detects types and works out what each one means for your business: revenue, dates, suppliers, quantities."),
+     "Profiles every column and works out what it means: revenue, dates, suppliers, quantities."),
     ("clean", "Automated data cleaning",
-     "Proposes fixes for missing values, duplicates, types and outliers. You approve each step; the original file is never changed."),
+     "Proposes fixes for missing values, duplicates, types and outliers. You approve each one; the original file is kept."),
     ("kpi", "Business KPI monitoring",
-     "Computes only the KPIs your data supports, each shown with its formula, source columns and limitations."),
+     "Only the KPIs your data supports, each with its formula, source columns and limitations."),
     ("forecast", "Predictive forecasting",
-     "Validates seasonal, smoothing, Holt-Winters and ARIMA models on held-out periods and keeps the simplest one that performs."),
+     "Seasonal, smoothing, Holt-Winters and ARIMA models, tested on held-out periods. The simplest one that holds up wins."),
     ("anomaly", "Anomaly detection",
-     "Flags unusual records and periods with robust statistics and Isolation Forest. Records are flagged, never deleted."),
+     "Unusual records and periods, found with robust statistics and Isolation Forest. Flagged, never deleted."),
     ("truck", "Supplier performance analysis",
-     "On-time in full, fill rate and lead time by supplier, with segments that group suppliers by how they actually perform."),
+     "On-time in full, fill rate and lead time by supplier, and segments based on how suppliers actually perform."),
     ("insight", "Automated business insights",
-     "Rules turn computed results into insights, each carrying its evidence, threshold and a recommended next step."),
+     "Each insight carries its evidence, the threshold it crossed and a suggested next step."),
     ("report", "Interactive reporting",
-     "Explore results interactively, then export a PDF or HTML report built only from figures computed from your data."),
+     "Explore the results, then export a PDF or HTML report built only from figures computed from your data."),
 ]
 
 SOLUTIONS = [
-    ("network", "Supply chain analytics",
-     "One view of orders, deliveries and lead times, with demand and volume forecasts validated on your own history.",
-     ("On-time in full", "Lead time", "Demand forecast")),
-    ("boxes", "Inventory optimization",
-     "See stockout exposure and inventory cover, and screen stock movements for unusual periods before they become shortages.",
-     ("Inventory cover", "Stockout rate", "Anomalies")),
-    ("people", "Supplier management",
-     "Compare suppliers on delivery reliability, fill rate and lead time, and group them into segments you can act on.",
-     ("Fill rate", "Supplier segments", "Scorecards")),
-    ("sliders", "Operational analytics",
-     "Find which factors move your operational outcomes with driver analysis tested on held-out data.",
-     ("Key drivers", "Data quality", "Trends")),
-    ("pulse", "Business performance monitoring",
-     "Track revenue, volume and other core measures over time for any business dataset, with breakdowns by segment.",
-     ("KPIs", "Breakdowns", "Reports")),
+    ("network", "Supply chain analytics", "Orders, deliveries and lead times in one view, with demand forecasts tested on your history.",
+     "On-time in full · Lead time · Demand forecast"),
+    ("boxes", "Inventory optimization", "Stockout exposure and inventory cover, plus unusual stock movements before they become shortages.",
+     "Inventory cover · Stockout rate · Anomalies"),
+    ("people", "Supplier management", "Compare suppliers on reliability, fill rate and lead time, and group them into segments.",
+     "Fill rate · Supplier segments · Scorecards"),
+    ("sliders", "Operational analytics", "Which factors move your outcomes, from driver analysis checked on held-out data.",
+     "Key drivers · Data quality · Trends"),
+    ("pulse", "Business performance monitoring", "Revenue, volume and other core measures over time, broken down by segment.",
+     "KPIs · Breakdowns · Reports"),
 ]
 
 STEPS = [
-    ("upload", "Upload your business dataset",
-     "CSV, TSV or Excel. Encodings, delimiters and worksheets are detected automatically, and the file is validated on upload."),
-    ("cpu", "Let the platform analyse your data",
-     "Profiling, quality checks, cleaning proposals, column roles, KPIs, forecasts and anomaly screening run on your data."),
-    ("target", "Discover actionable insights",
-     "Review evidence-backed insights and recommendations, then share a finished PDF or HTML report."),
-]
-
-PRINCIPLES = [
-    ("eye", "Computed from your data",
-     "Every figure comes from the dataset you upload. Analyses the data cannot support are listed with the reason, never filled in."),
-    ("shield", "Explainable by design",
-     "Formulas, validation methods and evidence accompany each KPI, forecast and insight, so results can be checked."),
-    ("server", "Private by default",
-     "Runs on your own infrastructure with no external AI service. Each account sees only its own datasets and reports."),
+    ("Upload a dataset", "CSV, TSV or Excel. Encoding, delimiter and worksheet are detected for you."),
+    ("Review what it found", "Data quality, column roles, KPIs, forecasts and anomalies, each with the working shown."),
+    ("Share the result", "Export a PDF or HTML report built from the figures you reviewed."),
 ]
 
 
@@ -72,141 +56,81 @@ def _nav() -> str:
 <nav class="lp-nav" aria-label="Main">
   {brand()}
   <div class="lp-links"><a href="#lp-home">Home</a><a href="#lp-features">Features</a><a href="#lp-solutions">Solutions</a><a href="#lp-about">About</a></div>
-  <div class="lp-cta"><a class="pb-btn sm ghost" href="login" target="_self">Log in</a>
+  <div class="lp-cta">{theme_switch()}<a class="pb-btn sm ghost" href="login" target="_self">Log in</a>
     <a class="pb-btn sm primary" href="register" target="_self">Get started</a></div>
 </nav>"""
 
 
-def _preview() -> str:
-    hist = [(0, 88), (22.5, 80), (45, 84), (67.5, 72), (90, 76), (112.5, 64), (135, 68), (157.5, 58), (180, 62), (202.5, 50),
-            (225, 54), (247.5, 44), (270, 40)]
-    fc = [(270, 40), (302.5, 36), (335, 37), (367.5, 31), (400, 28)]
-    upper = [(270, 40), (302.5, 27), (335, 25), (367.5, 16), (400, 11)]
-    lower = [(400, 45), (367.5, 46), (335, 49), (302.5, 45), (270, 40)]
-    pts = lambda seq: " ".join(f"{x},{y}" for x, y in seq)
-    area = pts(hist) + " 270,118 0,118"
-    grid = "".join(f'<line x1="0" x2="400" y1="{y}" y2="{y}" stroke="#1F242B" stroke-width="1"/>' for y in (18, 51, 84, 117))
-    chart_svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" preserveAspectRatio="none">
-  {grid}
-  <polygon points="{area}" fill="#3DA58A" fill-opacity=".07"/>
-  <polygon points="{pts(upper + lower)}" fill="#4FBC9F" fill-opacity=".12"/>
-  <line x1="270" x2="270" y1="6" y2="118" stroke="#2A3038" stroke-dasharray="3 3"/>
-  <polyline points="{pts(hist)}" fill="none" stroke="#3DA58A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-  <polyline points="{pts(fc)}" fill="none" stroke="#4FBC9F" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>
-</svg>"""
-    chart = (f'<img class="pv-chart" alt="Orders per week, actual and forecast" '                   # st.html strips inline SVG
-             f'src="data:image/svg+xml;base64,{base64.b64encode(chart_svg.encode()).decode()}">')
-    stats = [("On-time in full", "92.4%", "+1.8 pts", ""), ("Fill rate", "96.1%", "+0.6 pts", ""),
-             ("Avg lead time", "6.8 days", "-0.4 days", ""), ("Stockout rate", "3.2%", "+0.5 pts", "neg")]
-    stat_html = "".join(f'<div class="pv-stat"><div class="pv-k">{k}</div><div class="pv-v">{v}</div><div class="pv-d {c}">{d}</div></div>'
-                        for k, v, d, c in stats)
-    bars = [("Northwind", 9.4, "w"), ("Apex", 7.1, ""), ("Meridian", 6.2, ""), ("Harbor", 5.5, ""), ("Summit", 4.8, "")]
-    bar_html = "".join(f'<div class="pv-b"><span>{n}</span><div class="pv-track"><i class="{c}" style="width:{v / 10 * 100:.0f}%"></i></div>'
-                       f"<em>{v}</em></div>" for n, v, c in bars)
-    nav = [("Start", ["Home", "Upload"]), ("Find insights", ["Dashboard", "Forecasting", "Anomalies", "Insights"]), ("Deliver", ["Reports"])]
-    side = "".join(f'<div class="pv-sec">{sec}</div>' + "".join(
-        f'<div class="pv-nav{" on" if item == "Dashboard" else ""}">{item}</div>' for item in items) for sec, items in nav)
-    return f"""
-<div class="pv-wrap">
-  <div class="pv" aria-label="Product preview">
-    <div class="pv-bar"><i></i><i></i><i></i><span>Dashboard</span></div>
-    <div class="pv-body">
-      <div class="pv-side">{side}</div>
-      <div class="pv-main">
-        <div class="pv-ctx"><span class="pv-dot"></span><b>supply_chain_orders.csv</b><span>12,480 rows · 14 columns · cleaned data</span></div>
-        <div class="pv-stats">{stat_html}</div>
-        <div class="pv-card"><div class="pv-ct">Orders per week <span>Holt-Winters · 8-week forecast</span></div>{chart}
-          <div class="pv-leg"><span><i></i>Actual</span><span><i class="f"></i>Forecast, 80% interval</span></div></div>
-        <div class="pv-row">
-          <div class="pv-card"><div class="pv-ct">Lead time by supplier <span>days</span></div><div class="pv-bars">{bar_html}</div></div>
-          <div class="pv-card"><div class="pv-ct">Insights</div><div class="pv-ins">
-            <div class="pv-in"><b>Northwind lead time 38% above median</b>412 orders · threshold 25%</div>
-            <div class="pv-in ok"><b>Fill rate stable across warehouses</b>Spread within 1.2 pts</div></div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="pv-cap">Interface preview with synthetic sample figures</div>
-</div>"""
+def _screenshot() -> str:
+    if not all((ASSETS / f"{SCREENSHOT}-{t}.webp").exists() for t in ("light", "dark")):
+        return ""
+    img = themed_img(SCREENSHOT, "webp", "The Dashboard page: KPI tiles, a revenue trend and breakdowns", loading="lazy")
+    return (f'<figure class="lp-shot" style="margin-bottom:0">{img}</figure>'
+            f'<p class="lp-cap">The Dashboard, shown with the built-in synthetic sample dataset.</p>')
 
 
 def _hero() -> str:
-    trust = [("check", "CSV and Excel"), ("lock", "Private accounts"), ("server", "No external AI service required")]
-    trust_html = "".join(f"<span>{icon(i, 15)}{t}</span>" for i, t in trust)
     return f"""
 <section class="lp-hero" id="lp-home">
-  <div>
-    <span class="lp-pill"><b>Analytics</b>Forecasting, anomalies and insights in one workspace</span>
-    <h1 class="lp-h1">Turn Business Data Into <span>Decisions That Drive Growth.</span></h1>
-    <p class="lp-lead">Transform raw business data into meaningful insights with intelligent analytics, predictive forecasting,
-      automated reporting, and AI-powered business intelligence.</p>
-    <div class="lp-actions"><a class="pb-btn primary" href="register" target="_self">Get Started {icon("arrow", 17)}</a>
-      <a class="pb-btn" href="#lp-features">Explore Platform</a></div>
-    <div class="lp-trust">{trust_html}</div>
+  <div class="lp-hero-row">
+    <h1 class="lp-h1">Turn Business Data Into Decisions That Drive Growth.</h1>
+    <div>
+      <p class="lp-lead">Transform raw business data into meaningful insights with intelligent analytics, predictive forecasting,
+        automated reporting, and AI-powered business intelligence.</p>
+      <div class="lp-actions"><a class="pb-btn primary" href="register" target="_self">Get Started {icon("arrow", 17)}</a>
+        <a class="pb-btn" href="#lp-features">Explore Platform</a></div>
+    </div>
   </div>
-  {_preview()}
+  {_screenshot()}
 </section>"""
 
 
 def _features() -> str:
-    cards = "".join(f'<div class="lp-card"><div class="lp-ic">{icon(i)}</div><div class="lp-ct">{t}</div><div class="lp-cd">{d}</div></div>'
+    items = "".join(f'<div class="lp-item">{icon(i, 18)}<div><div class="lp-ct">{t}</div><div class="lp-cd">{d}</div></div></div>'
                     for i, t, d in FEATURES)
     return f"""
 <section class="lp-sec" id="lp-features">
-  <div class="lp-eyebrow">Features</div>
-  <h2 class="lp-h2">Everything between a raw spreadsheet and a confident decision.</h2>
-  <p class="lp-sub">One workflow takes your data from upload to report. Each step shows its working, so you can trust what you share.</p>
-  <div class="lp-grid">{cards}</div>
+  <div><h2 class="lp-h2">From spreadsheet to decision.</h2>
+    <p class="lp-sub">Each step shows its working, so you can check a number before you share it.</p></div>
+  <div class="lp-list">{items}</div>
 </section>"""
 
 
 def _solutions() -> str:
-    rows = "".join(f'<div class="lp-sol"><div class="lp-ic">{icon(i)}</div><div><div class="lp-ct">{t}</div><div class="lp-cd">{d}</div>'
-                   f'<div class="lp-tags">{"".join(f"<span>{tag}</span>" for tag in tags)}</div></div></div>'
-                   for i, t, d, tags in SOLUTIONS)
+    items = "".join(f'<div class="lp-item">{icon(i, 18)}<div><div class="lp-ct">{t}</div><div class="lp-cd">{d}</div>'
+                    f'<div class="lp-tags">{tags}</div></div></div>' for i, t, d, tags in SOLUTIONS)
     return f"""
 <section class="lp-sec" id="lp-solutions">
-  <div class="lp-split">
-    <div><div class="lp-eyebrow">Industry solutions</div>
-      <h2 class="lp-h2">Built for operations and supply chain teams.</h2>
-      <p class="lp-sub">Supply chain is where the platform goes deepest, with purpose-built KPIs for delivery, inventory and suppliers.
-        The same engine works on any business dataset.</p></div>
-    <div class="lp-sols">{rows}</div>
-  </div>
+  <div><h2 class="lp-h2">Built for operations and supply chain teams.</h2>
+    <p class="lp-sub">Supply chain gets purpose-built KPIs for delivery, inventory and suppliers. Everything else works on any
+      business dataset.</p></div>
+  <div class="lp-list">{items}</div>
 </section>"""
 
 
 def _how() -> str:
-    steps = "".join(f'<div class="lp-step"><div class="lp-step-top"><div class="lp-ic">{icon(i)}</div><span class="lp-num">0{n}</span></div>'
-                    f'<div class="lp-ct">{t}</div><div class="lp-cd">{d}</div></div>'
-                    for n, (i, t, d) in enumerate(STEPS, start=1))
+    steps = "".join(f'<div><div class="lp-num">{n}</div><div class="lp-ct">{t}</div><div class="lp-cd">{d}</div></div>'
+                    for n, (t, d) in enumerate(STEPS, start=1))
     return f"""
 <section class="lp-sec" id="lp-how">
-  <div class="lp-eyebrow">How it works</div>
-  <h2 class="lp-h2">From upload to insight in three steps.</h2>
+  <div><h2 class="lp-h2">How it works</h2></div>
   <div class="lp-steps">{steps}</div>
 </section>"""
 
 
 def _about() -> str:
-    rows = "".join(f'<div class="lp-pr"><div class="lp-ic">{icon(i)}</div><div><div class="lp-ct">{t}</div><div class="lp-cd">{d}</div></div></div>'
-                   for i, t, d in PRINCIPLES)
     return f"""
 <section class="lp-sec" id="lp-about">
-  <div class="lp-split">
-    <div><div class="lp-eyebrow">About</div>
-      <h2 class="lp-h2">Business intelligence you can verify.</h2>
-      <p class="lp-sub">The AI Business Intelligence Platform turns business datasets into analysis that holds up to scrutiny.
-        It computes every figure from the data you upload, explains how each result was produced, and says plainly when the
-        data cannot support an analysis.</p></div>
-    <div class="lp-princ">{rows}</div>
+  <div><h2 class="lp-h2">About {APP_NAME}</h2></div>
+  <div class="lp-about">
+    <p><b>Every figure comes from your data.</b> When a dataset cannot support an analysis, {APP_NAME} says which one and why,
+      instead of filling the gap.</p>
+    <p><b>Results can be checked.</b> KPIs show their formulas, forecasts their validation, insights their evidence.</p>
+    <p><b>Private by default.</b> It runs on your own machine or server with no external AI service, and each account sees only
+      its own datasets and reports.</p>
+    <div class="lp-actions"><a class="pb-btn primary" href="register" target="_self">Create an account</a>
+      <a class="pb-btn" href="login" target="_self">Log in</a></div>
   </div>
-</section>
-<section class="lp-band">
-  <h2 class="lp-h2">Start turning your data into decisions.</h2>
-  <p class="lp-sub">Create an account, upload a dataset and see your first insights in minutes.</p>
-  <div class="lp-actions"><a class="pb-btn primary" href="register" target="_self">Get Started {icon("arrow", 17)}</a>
-    <a class="pb-btn" href="login" target="_self">Log in</a></div>
 </section>"""
 
 

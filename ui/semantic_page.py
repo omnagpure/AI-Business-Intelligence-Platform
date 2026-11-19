@@ -42,8 +42,6 @@ def _render_domain(model: SemanticModel) -> None:
                     + note_list(list(d.evidence)), unsafe_allow_html=True)
         if d.alternatives:
             st.caption("Also considered: " + ", ".join(f"{DOMAIN_LABELS[k]} {_pct(v)}" for k, v in d.alternatives))
-        if d.domain == "general" and d.source != "user":
-            st.caption("Low domain confidence does not limit analysis. General-purpose statistics still apply.")
     with right:
         options = [_AUTO] + [DOMAIN_LABELS[x] for x in DOMAINS]
         current = _AUTO if ov["domain"] is None else DOMAIN_LABELS[ov["domain"]]
@@ -88,7 +86,6 @@ def _render_editor(model: SemanticModel) -> None:
     if table.empty:
         st.caption("No columns match this filter.")
         return
-    st.caption("Change a role in the Role column, then press Save. Later analysis uses your corrected meaning.")
     edited = st.data_editor(
         table, key=f"sem_editor_{model.fingerprint()}_{state.semantic_editor_version()}_{flt}",
         disabled=[x for x in table.columns if x != "Role"],
@@ -121,7 +118,6 @@ def _render_review(model: SemanticModel) -> None:
     if not flagged:
         empty_state("Nothing to review", "Every column was classified with reasonable confidence or set by you.")
         return
-    st.caption("Low-confidence suggestions. Pick the right meaning with one click, or leave a column as it is.")
     ov = state.get_semantic_overrides()
     shown = flagged[:12]
     for col in shown:

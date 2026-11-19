@@ -6,7 +6,7 @@ import streamlit as st
 from auth import passwords, service
 from auth.service import AuthError
 from storage import repository
-from ui import auth_state
+from ui import auth_state, theme
 from ui.layout import eyebrow, page_title
 
 
@@ -19,6 +19,11 @@ def render_account_page() -> None:
     c[1].metric("Saved datasets", n_ds)
     c[2].metric("Saved reports", n_rep)
     st.caption(f"Signed in as {user.email}")
+
+    st.write("")
+    eyebrow("Appearance")
+    theme.appearance_control("acct_theme", label_visibility="collapsed")
+    st.caption("System follows your device's light or dark setting. Saved in this browser.")
 
     st.write("")
     eyebrow("Change password")

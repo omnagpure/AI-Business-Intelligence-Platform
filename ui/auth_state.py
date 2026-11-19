@@ -84,7 +84,7 @@ def sign_in(user: User, remember: bool) -> None:
     if routes_enabled():
         code = service.create_handoff(user.id, remember, browser_binding(_cookie("_streamlit_xsrf")))
         st.session_state[_REDIRECT] = f"{SESSION_PATH}?code={code}&next={target}"
-    else:                                                 # plain `streamlit run app.py`: the session lives in this tab only
+    else:                                                 # page script run on its own (no cookie routes): the session lives in this tab only
         token = service.create_session(user.id, remember=False)
         st.session_state[_SID] = service.session_id_for(token)
         st.session_state[_USER] = user

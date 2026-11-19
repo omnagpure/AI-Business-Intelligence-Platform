@@ -1,4 +1,4 @@
-"""HTTP routes that set and clear the session cookie, mounted by server.py (st.App).
+"""HTTP routes that set and clear the session cookie, mounted by app.py (st.App).
 
 Streamlit scripts can read cookies but cannot set them, and a cookie set from JavaScript could not be HttpOnly.
 So after the password check the browser is sent to /auth/session with a single-use code; this route exchanges it for
@@ -13,7 +13,7 @@ import re
 from auth import service
 
 COOKIE_NAME = "bi_session"
-ROUTES_FLAG = "BI_AUTH_ROUTES"          # set by server.py, so the app knows the cookie routes exist
+ROUTES_FLAG = "BI_AUTH_ROUTES"          # set by app.py, so the app knows the cookie routes exist
 SESSION_PATH = "/auth/session"
 LOGOUT_PATH = "/auth/logout"
 _NEXT_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -63,7 +63,8 @@ async def session_route(request):
         return _no_store(RedirectResponse("/login?notice=expired", status_code=303))
     user_id, remember = exchanged
     token = service.create_session(user_id, remember)
-    response = RedirectResponse(f"/{target}", status_code=303)
+    # the Home page is the app's default page, which Streamlit serves at "/" only
+    response = RedirectResponse("/" if target == "overview" else f"/{target}", status_code=303)
     response.set_cookie(COOKIE_NAME, token, max_age=service.REMEMBER_LIFETIME if remember else None, path="/",
                         httponly=True, samesite="lax", secure=request.url.scheme == "https")
     return _no_store(response)

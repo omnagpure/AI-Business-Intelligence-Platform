@@ -46,8 +46,6 @@ def render_forecasting_page() -> None:
         return
     ds = result.dataset
     page_title("Forecasting", ds.filename + (" · synthetic sample data" if ds.is_sample else ""))
-    if ds.is_sample:
-        st.warning("This is synthetic sample data generated for demonstration. It is not real.")
     try:
         df, profile, model = state.get_analysis_df(), state.get_analysis_profile(), state.get_semantic_model()
     except Exception:
@@ -92,8 +90,6 @@ def render_forecasting_page() -> None:
         st.session_state["fc_params"] = (base_key(), date_col, value_col, freq, agg, horizon, model_key)
     params = st.session_state.get("fc_params")
     if not params or params[0] != base_key():
-        st.caption("Choose a target and press Run forecast. Models are compared with rolling-origin validation "
-                   "(no random splits), and the simplest model that is not clearly worse is used.")
         return
     status, payload = _run(df, *params[1:])
     if status == "insufficient":

@@ -11,8 +11,14 @@ import pandas as pd
 
 from analytics.descriptive import OTHER_LABEL, numeric_series, top_n_with_other
 
-PALETTE = ["#3DA58A", "#5B8DEF", "#E0A458", "#C26D8B", "#8E7CC3", "#6BB7C9", "#A3B35C", "#D0745F", "#7F8C9B", "#B8A27A"]
-TEXT, MUTED, GRID = "#E6E8EB", "#8B93A1", "#232830"
+PALETTE = ["#D9541E", "#2F6FDB", "#2F9E6B", "#8257D8", "#C9962B", "#5B6B7D", "#C2477A", "#2A9BB5", "#7C8B3A", "#9C6B4E"]
+MUTED = "#8C887F"      # mid grey that reads on both light and dark backgrounds
+# Light defaults; apply_theme() restyles a figure for the appearance it is shown in.
+TEXT, GRID = "#1C1B19", "#E8E5DF"
+_THEMES = {
+    "light": {"template": "plotly_white", "text": "#1C1B19", "muted": "#625F58", "grid": "#ECE9E3", "mid": "#F4F2EE"},
+    "dark": {"template": "plotly_dark", "text": "#EDEAE4", "muted": "#A8A39A", "grid": "#2D2B28", "mid": "#23211F"},
+}
 MAX_DONUT_SLICES = 8
 MAX_BOX_GROUPS = 10
 MAX_HEATMAP_COLUMNS = 20
@@ -43,10 +49,24 @@ def sample_points(frame: pd.DataFrame, max_points: int, seed: int = 0) -> tuple[
 
 
 # ---- styling ----------------------------------------------------------------------------------
+def apply_theme(fig, appearance: str):
+    """Restyle a finished figure for light or dark: template, text, grid and the heatmap midpoint. Data colours stay."""
+    t = _THEMES.get(appearance, _THEMES["light"])
+    fig.update_layout(template=t["template"], paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      font=dict(color=t["text"]), title_font_color=t["text"], legend_font_color=t["muted"])
+    fig.update_xaxes(gridcolor=t["grid"], linecolor=t["grid"], tickfont_color=t["muted"])
+    fig.update_yaxes(gridcolor=t["grid"], linecolor=t["grid"], tickfont_color=t["muted"])
+    for trace in fig.data:
+        if getattr(trace, "type", "") == "heatmap" and trace.colorscale and len(trace.colorscale) == 3:
+            lo, _, hi = trace.colorscale
+            trace.colorscale = [lo, [0.5, t["mid"]], hi]
+    return fig
+
+
 def _style(fig, title: str, x_title: str = "", y_title: str = "", height: int = 360):
     fig.update_layout(
         title=dict(text=title, x=0, xanchor="left", font=dict(size=14, color=TEXT)),
-        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        template="plotly_white", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=TEXT, size=12), colorway=PALETTE, height=height,
         margin=dict(l=10, r=10, t=48, b=10), legend=dict(orientation="h", y=-0.2, font=dict(color=MUTED)),
     )
@@ -175,7 +195,7 @@ def heatmap(matrix: pd.DataFrame, title: str, max_columns: int = MAX_HEATMAP_COL
         return None
     m = matrix.iloc[:max_columns, :max_columns].replace([np.inf, -np.inf], np.nan)
     fig = go.Figure(go.Heatmap(z=m.to_numpy(), x=list(m.columns), y=list(m.index), zmin=-1, zmax=1,
-                               colorscale=[[0, "#C26D8B"], [0.5, "#101318"], [1, "#3DA58A"]],
+                               colorscale=[[0, "#2F6FDB"], [0.5, "#F4F2EE"], [1, "#D9541E"]],
                                text=np.round(m.to_numpy(dtype=float), 2), texttemplate="%{text}",
                                hovertemplate="%{y} vs %{x}: %{z:.2f}<extra></extra>"))
     fig.update_yaxes(autorange="reversed")
@@ -197,7 +217,7 @@ def forecast_chart(history: pd.DataFrame, forecast: pd.DataFrame, title: str, y_
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=f["period"], y=f["upper"], mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip"))
     fig.add_trace(go.Scatter(x=f["period"], y=f["lower"], mode="lines", line=dict(width=0), fill="tonexty",
-                             fillcolor="rgba(61,165,138,0.18)", name=interval_label, hoverinfo="skip"))
+                             fillcolor="rgba(217,84,30,0.14)", name=interval_label, hoverinfo="skip"))
     fig.add_trace(go.Scatter(x=h["period"], y=h["value"], mode="lines", name="History", line=dict(color=PALETTE[1], width=2)))
     if backtest is not None and len(backtest):
         fig.add_trace(go.Scatter(x=backtest["period"], y=backtest["predicted"], mode="lines", name="Validation predictions",

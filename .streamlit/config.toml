@@ -1,20 +1,43 @@
+# Tessaly theme. Shared settings on [theme]; colours per appearance on [theme.light] / [theme.dark].
+# Keep these colours in step with the tokens in ui/theme.py.
 [theme]
-base = "dark"
-primaryColor = "#3DA58A"
-backgroundColor = "#0B0D10"
-secondaryBackgroundColor = "#101318"
-textColor = "#E6E8EB"
-borderColor = "#232830"
-baseRadius = "small"
+font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap, sans-serif"
+codeFont = "Geist Mono:https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap, monospace"
+baseRadius = "medium"
+buttonRadius = "medium"
 showWidgetBorder = true
-font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap, sans-serif"
+showSidebarBorder = true
 baseFontSize = 15
-headingFontSizes = ["1.5rem", "1.2rem", "1rem", "0.95rem", "0.9rem", "0.85rem"]
+headingFontSizes = ["1.6rem", "1.2rem", "1rem", "0.95rem", "0.9rem", "0.85rem"]
 headingFontWeights = [600, 600, 600, 600, 600, 600]
 
-[theme.sidebar]
-backgroundColor = "#0B0D10"
-secondaryBackgroundColor = "#101318"
+[theme.light]
+primaryColor = "#C2410C"
+backgroundColor = "#FBFAF8"
+secondaryBackgroundColor = "#F4F2EE"
+textColor = "#1C1B19"
+borderColor = "#E2DED6"
+linkColor = "#9A3412"
+dataframeHeaderBackgroundColor = "#F4F2EE"
+chartCategoricalColors = ["#D9541E", "#2F6FDB", "#2F9E6B", "#8257D8", "#C9962B", "#5B6B7D", "#C2477A", "#2A9BB5", "#7C8B3A", "#9C6B4E"]
+
+[theme.light.sidebar]
+backgroundColor = "#F5F3EF"
+secondaryBackgroundColor = "#ECE9E3"
+
+[theme.dark]
+primaryColor = "#F2692A"
+backgroundColor = "#121110"
+secondaryBackgroundColor = "#1D1C1A"
+textColor = "#EDEAE4"
+borderColor = "#34312D"
+linkColor = "#FF8A4F"
+dataframeHeaderBackgroundColor = "#1D1C1A"
+chartCategoricalColors = ["#D9541E", "#2F6FDB", "#2F9E6B", "#8257D8", "#C9962B", "#5B6B7D", "#C2477A", "#2A9BB5", "#7C8B3A", "#9C6B4E"]
+
+[theme.dark.sidebar]
+backgroundColor = "#161513"
+secondaryBackgroundColor = "#23211F"
 
 [server]
 maxUploadSize = 200

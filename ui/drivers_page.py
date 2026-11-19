@@ -31,8 +31,6 @@ def render_drivers_page() -> None:
         return
     ds = result.dataset
     page_title("Driver analysis", ds.filename + (" · synthetic sample data" if ds.is_sample else ""))
-    if ds.is_sample:
-        st.warning("This is synthetic sample data generated for demonstration. It is not real.")
     try:
         df, profile, model = state.get_analysis_df(), state.get_analysis_profile(), state.get_semantic_model()
     except Exception:

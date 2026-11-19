@@ -8,13 +8,14 @@ import streamlit as st
 from auth import passwords, service
 from auth.service import AuthError
 from ui import auth_state, nav
-from ui.public_ui import apply_public_theme, brand, icon
+from ui.public_ui import apply_public_theme, brand, icon, theme_switch
 
 _FORGOT = "_auth_show_forgot"
 
 
 def _shell_top() -> None:
-    st.html(f'<div class="au-top">{brand()}<a class="au-back" href="./" target="_self">Back to home</a></div>')
+    st.html(f'<div class="au-top">{brand()}<div class="au-top-r">{theme_switch()}'
+            f'<a class="au-back" href="./" target="_self">Back to home</a></div></div>')
 
 
 def _card():
@@ -44,7 +45,7 @@ def render_login_page() -> None:
             password = st.text_input("Password", key="li_password", type="password", max_chars=passwords.MAX_LENGTH,
                                      autocomplete="current-password", help="Use the eye icon in the field to show or hide the password.")
             remember = st.checkbox("Remember me for 30 days", key="li_remember", disabled=not remember_ok,
-                                   help=None if remember_ok else "Available when the app is started with `streamlit run server.py`.")
+                                   help=None if remember_ok else "Available when the app is started with `streamlit run app.py`.")
             submitted = st.form_submit_button("Sign in", type="primary", width="stretch")
         if submitted:
             try:

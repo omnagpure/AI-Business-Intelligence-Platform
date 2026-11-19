@@ -1,4 +1,6 @@
-# AI Business Intelligence Platform
+# Tessaly
+
+Business intelligence for operational datasets (formerly "AI Business Intelligence Platform").
 
 Local Streamlit app for uploading business data (CSV / Excel), profiling and cleaning it, working out what each
 column means, computing only the KPIs the data supports, and then forecasting, screening for anomalies, segmenting,
@@ -35,12 +37,12 @@ macOS/Linux: `python3 -m venv .venv && source .venv/bin/activate && pip install 
 
 ## Run
 ```powershell
-streamlit run server.py
+streamlit run app.py
 ```
 Open http://localhost:8501. Visitors see the public homepage; **Get started** creates an account and opens the app.
 
-`server.py` wraps `app.py` with two HTTP routes that set and clear the HttpOnly session cookie, plus security headers.
-`streamlit run app.py` still works, but then sign-in lasts only for the open browser tab and "Remember me" is disabled.
+`app.py` wraps the pages (`tessaly_app.py`) with two HTTP routes that set and clear the HttpOnly session cookie, plus
+security headers, so sign-in survives page reloads and "Remember me" works. `streamlit run server.py` is an alias.
 
 ## Accounts and data privacy
 - **Accounts** live in SQLite at `data_store/app.db` (set `BI_DATA_DIR` to move it; the folder is git-ignored).
@@ -72,6 +74,17 @@ python -m ruff check .
 3. **Analyze:** Dashboard, Data explorer, Forecasting, Anomalies, Segmentation, Drivers, Insights.
 4. **Deliver > Reports:** set a title and an optional "prepared for", choose whether to include the advanced analyses and whether to also build HTML,
    press **Build PDF report**, then download the PDF (and HTML if you ticked it). If you change the data, roles, cleaning or options, build again.
+
+## Appearance and app shell
+- **Light, dark or system.** Switch from the account menu (top right), the Account page, or the icons on the homepage and sign-in
+  pages. The choice is saved in the browser (a `bi_theme` cookie plus Streamlit's own theme setting), and applies to every page,
+  charts included. Colours live in one place: `ui/theme.py`, mirrored in `.streamlit/config.toml` (a test checks they match).
+- **Top bar.** Switch between your saved datasets, and open the account menu (Account, Settings, appearance, Sign out).
+- **Picks up where you left off.** After you sign in, the dataset you used last opens by itself. Closing a dataset keeps it saved.
+- **KPI tiles.** A sparkline and the change on the previous period appear only for KPIs that are a plain sum, average or count
+  of one column with no extra filter, computed from complete periods (at least three). Other KPIs show the value alone.
+- **Brand.** Logo, mark and favicon are in `assets/` (light and dark variants). The homepage picture is a real screenshot of the
+  Dashboard with the synthetic sample data (`assets/screen-dashboard-*.webp`); retake it if the dashboard changes.
 
 ## Optional: train the semantic name model
 The app works without it (rules only). The model reads only column *names* and is blended in when you switch it on

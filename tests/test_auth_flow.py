@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 from auth import service
 
-APP = str(Path(__file__).resolve().parent.parent / "app.py")
+APP = str(Path(__file__).resolve().parent.parent / "tessaly_app.py")
 PW = "Valid-pass-2024"
 
 
@@ -42,18 +42,18 @@ def test_visitor_gets_the_public_homepage_and_no_app_pages():
     html = _html(at)
     assert "Turn Business Data Into" in html and "Explore Platform" in html and 'id="lp-features"' in html
     assert "Supplier performance analysis" in html and "Inventory optimization" in html
-    assert not any(b.key in {"home_sample", "clear_ds", "sb_logout"} for b in at.button)   # no app UI rendered
+    assert not any(b.key in {"home_sample", "clear_ds", "tb_logout"} for b in at.button)   # no app UI rendered
     assert "ingestion_result" not in at.session_state
 
 
-def test_signed_in_user_gets_the_app_with_their_name_in_the_sidebar():
+def test_signed_in_user_gets_the_app_with_their_name_in_the_account_menu():
     user, sid = _fresh_session()
     at = AppTest.from_file(APP, default_timeout=30)
     at.session_state["_auth_sid"] = sid
     at.run()
     assert not at.exception
     assert any(b.key == "home_sample" for b in at.button)
-    assert user.full_name in " ".join(m.value for m in at.sidebar.markdown)
+    assert f"<b>{user.full_name}</b>" in _html(at) and any(b.key == "tb_logout" for b in at.button)
 
 
 def test_revoked_session_drops_back_to_public_pages_and_forgets_data():
@@ -75,7 +75,7 @@ def test_sign_out_revokes_session_and_clears_state():
     at.session_state["_auth_sid"] = sid
     at.run()
     at.button(key="home_sample").click().run()
-    at.button(key="sb_logout").click().run()
+    at.button(key="tb_logout").click().run()
     assert not at.exception
     assert service.validate_session(sid) is None
     assert "ingestion_result" not in at.session_state and "_auth_sid" not in at.session_state
@@ -96,7 +96,7 @@ def test_login_form_rejects_wrong_password_and_signs_in_with_right_one():
     user, _ = _fresh_session()
     at = AppTest.from_function(_login_script, default_timeout=30).run()
     assert [c.label for c in at.checkbox] == ["Remember me for 30 days"]
-    assert at.checkbox[0].disabled                     # no cookie routes under a plain `streamlit run app.py`
+    assert at.checkbox[0].disabled                     # no cookie routes when the page script runs on its own
     at.text_input(key="li_email").input(user.email)
     at.text_input(key="li_password").input("Wrong-pass-999")
     at.button[0].click().run()

@@ -61,7 +61,7 @@ near-duplicate scan skipped above 3M cells.
 | semantic/business_domain.py | domain detection with confidence, evidence, alternatives; falls back to "general" |
 | semantic/semantic_model.py | SemanticModel, user overrides (roles recompute domain), fingerprint for cache keys |
 | ui/semantic_page.py, ui/state.py, app.py | Semantics page, cached model keyed by data + cleaning + overrides |
-| ui/layout.py, .streamlit/config.toml, assets/logo.svg | design system and theme |
+| ui/layout.py, .streamlit/config.toml, assets/logo-light.svg, assets/logo-dark.svg | design system and theme |
 | tests/test_semantics.py | 15 tests |
 
 Roles added beyond the spec list: `price` (unit price) and `duration` (days/hours/tenure).

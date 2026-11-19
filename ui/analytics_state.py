@@ -52,7 +52,13 @@ def peek(name: str, params: object):
 
 
 def show_figure(fig) -> None:
-    """Render a Plotly figure across Streamlit versions."""
+    """Render a Plotly figure across Streamlit versions, styled for the light or dark appearance in use."""
+    from ui.theme import appearance
+    from visualization.charts import apply_theme
+    try:
+        apply_theme(fig, appearance())
+    except Exception:  # styling must never stop a chart from showing
+        pass
     try:
         st.plotly_chart(fig, width="stretch", theme=None)
     except TypeError:

@@ -6,27 +6,34 @@ Column roles page. Nothing is displayed for an empty dataset.
 from __future__ import annotations
 
 from dataclasses import replace
-from html import escape
 
 import pandas as pd
 import streamlit as st
 
 from analytics.correlation import correlation
-from analytics.descriptive import (FREQ_LABELS, aggregate_time, analysable_numeric_columns, categorical_summary,
-                                  date_summary, datetime_series, grouped_summary, groupable_columns, numeric_summary)
+from analytics.descriptive import (
+    FREQ_LABELS,
+    aggregate_time,
+    analysable_numeric_columns,
+    categorical_summary,
+    date_summary,
+    groupable_columns,
+    grouped_summary,
+    numeric_summary,
+)
 from analytics.formatting import format_value
 from analytics.kpi_relevance import prioritise
+from analytics.kpi_trend import kpi_trend, lower_is_better
+from analytics.kpis import DataFilter, compute_kpis, primary_column, primary_date_column
 from analytics.primary_columns import PICKABLE, primary_candidates, with_primary
 from analytics.supply_chain_views import SuggestedView, suggest_views
-from analytics.kpis import OK, DataFilter, compute_kpis, primary_column, primary_date_column
 from config.analytics_config import DEFAULT_ANALYTICS
 from core.logging_config import get_logger
-from semantic.column_lexicon import DOMAIN_LABELS
 from ui import state
-from ui.shared_results import kpi_source
 from ui.analytics_state import cached, show_figure
 from ui.filters import render_filter_bar
 from ui.layout import empty_state, eyebrow, no_dataset_notice, page_title
+from ui.shared_results import kpi_source
 from visualization import charts
 
 log = get_logger("ui.dashboard")
@@ -62,18 +69,17 @@ def _kpi_section(df, model, config, flt) -> None:
         empty_state("Nothing to show", report.notes[0] if report.notes else "No data.")
         return
     for n in report.notes:
-        st.info(n)
+        st.caption(n)
     display = prioritise(report)
     shown = list(display.headline)
-    eyebrow("Key figures")
-    if display.supply_chain_mode:
-        st.caption("Supply-chain data detected: delivery, stock, quality and supplier KPIs lead.")
-    for i in range(0, len(shown), 3):
-        cols = st.columns(3)
-        for col, r in zip(cols, shown[i:i + 3]):
-            col.metric(r.name, format_value(r.value, r.unit), help=f"{r.formula}" + (f"\n\n{r.period}" if r.period else ""))
-            if r.period:
-                col.caption(r.period)
+    fdf = cached("filtered_df", flt.key(), lambda: flt.apply(df)) if flt.active else df
+    date_col = primary_date_column(df, model)
+    freq = config.time_freq if config.time_freq in ("M", "W", "D") else "M"
+    with st.container(key="kpi_grid"):
+        for i in range(0, len(shown), 3):
+            cols = st.columns(3)
+            for col, r in zip(cols, shown[i:i + 3]):
+                _kpi_tile(col, r, fdf, date_col, freq, flt.key())
     everything = shown + list(display.more)
     if display.more:
         with st.expander(f"{len(display.more)} more KPI(s)"):
@@ -92,8 +98,21 @@ def _kpi_section(df, model, config, flt) -> None:
             with st.expander(title):
                 st.dataframe(pd.DataFrame([{"KPI": r.name, "Status": r.status.replace("_", " "), "Reason": r.reason}
                                            for r in group]), hide_index=True)
-    st.caption("A KPI appears only when the columns it needs have the right roles. "
-               "Change roles on the Column roles page and this list updates.")
+
+
+def _kpi_tile(col, r, df, date_col, freq, filter_key) -> None:
+    """Value, plus a sparkline and the change on the previous period when they can be computed from complete periods."""
+    tip = r.formula + (f"\n\n{r.period}" if r.period else "")
+    trend = cached("kpi_trend", (r.key, r.formula, tuple(r.filters), date_col, freq, filter_key),
+                   lambda: kpi_trend(df, r.formula, r.filters, date_col, freq))
+    if trend is None:
+        col.metric(r.name, format_value(r.value, r.unit), help=tip)
+        return
+    delta = None if trend.change_pct is None else f"{trend.change_pct:+.1f}%"
+    col.metric(r.name, format_value(r.value, r.unit), delta=delta, help=tip,
+               delta_color="inverse" if lower_is_better(r.key) else "normal",
+               delta_description=f"last full {trend.period_label} vs previous" if delta else None,
+               chart_data=trend.points, chart_type="area")
 
 
 def _view_figure(v: SuggestedView):
@@ -115,7 +134,6 @@ def _views_section(df, model, config, flt) -> None:
         return
     st.write("")
     eyebrow("Suggested views")
-    st.caption("Chosen from the column roles in your data. Each caption is computed from the numbers plotted.")
     for i in range(0, len(views), 2):
         cols = st.columns(2)
         for col, v in zip(cols, views[i:i + 2]):
@@ -260,13 +278,11 @@ def _correlation_section(df, profile, model, config, flt) -> None:
 def render_dashboard_page() -> None:
     result = state.get_result()
     if result is None:
-        page_title("Dashboard", "KPIs and charts computed from your data.")
+        page_title("Dashboard")
         no_dataset_notice()
         return
     ds = result.dataset
-    page_title("Dashboard", ds.filename + (" · synthetic sample data" if ds.is_sample else ""))
-    if ds.is_sample:
-        st.warning("This is synthetic sample data generated for demonstration. It is not real.")
+    page_title("Dashboard", "KPIs and charts computed from " + ds.filename)
     try:
         df, profile, model = state.get_analysis_df(), state.get_analysis_profile(), state.get_semantic_model()
     except Exception:
@@ -276,10 +292,6 @@ def render_dashboard_page() -> None:
     if df is None or profile is None or model is None or len(df) == 0:
         empty_state("Nothing to analyse", "The active dataset has no rows.")
         return
-    st.caption(f"Domain: {DOMAIN_LABELS[model.domain.domain]}"
-               + (" (chosen by you)" if model.domain.source == "user" else f" · confidence {model.domain.confidence:.0%}")
-               + f" · {len(model.overridden())} role override(s)"
-               + (" · cleaned data" if state.get_cleaning() else " · original data"))
 
     config = DEFAULT_ANALYTICS
     date_col = primary_date_column(df, model)

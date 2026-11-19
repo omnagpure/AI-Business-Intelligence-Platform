@@ -119,8 +119,8 @@ def render_html(r: ReportData) -> bytes:
             + "".join(_section(s) for s in r.sections) + method)
     doc = (f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
            f'<title>{_e(r.title)}</title><style>{_CSS}</style></head><body>'
-           f'<header class="cover"><div class="wrap"><div class="kicker">AI Business Intelligence · Analysis report</div><h1>{_e(r.title)}</h1>'
+           f'<header class="cover"><div class="wrap"><div class="kicker">Tessaly · Analysis report</div><h1>{_e(r.title)}</h1>'
            f'<div class="bar"></div><p class="sub">{_e(r.subtitle)}</p><div class="meta">{cover_meta}</div></div></header>'
-           f'<main class="wrap">{body}<footer><span>AI Business Intelligence · Report {_e(r.report_id)}</span>'
+           f'<main class="wrap">{body}<footer><span>Tessaly · Report {_e(r.report_id)}</span>'
            f'<span>Every figure is computed from the uploaded data. Generated {_e(r.generated_at)}.</span></footer></main></body></html>')
     return doc.encode("utf-8")
