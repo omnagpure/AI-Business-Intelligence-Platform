@@ -1,10 +1,20 @@
 [theme]
 base = "dark"
-primaryColor = "#2bb3a3"
-backgroundColor = "#0f1317"
-secondaryBackgroundColor = "#161b21"
-textColor = "#dfe3e8"
-font = "sans serif"
+primaryColor = "#3DA58A"
+backgroundColor = "#0B0D10"
+secondaryBackgroundColor = "#101318"
+textColor = "#E6E8EB"
+borderColor = "#232830"
+baseRadius = "small"
+showWidgetBorder = true
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap, sans-serif"
+baseFontSize = 15
+headingFontSizes = ["1.5rem", "1.2rem", "1rem", "0.95rem", "0.9rem", "0.85rem"]
+headingFontWeights = [600, 600, 600, 600, 600, 600]
+
+[theme.sidebar]
+backgroundColor = "#0B0D10"
+secondaryBackgroundColor = "#101318"
 
 [server]
 maxUploadSize = 200

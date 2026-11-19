@@ -1,0 +1,144 @@
+{
+ "machine": {
+  "python": "3.12.3",
+  "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39",
+  "cpus": 1,
+  "statsmodels": false,
+  "plotly": false
+ },
+ "date": "2026-11-07",
+ "datasets": {
+  "supply_chain_dataset1.csv": {
+   "rows": 91250,
+   "cols": 15,
+   "steps": [
+    {
+     "step": "Ingest + profile",
+     "seconds": 0.492,
+     "status": "ok"
+    },
+    {
+     "step": "Semantic model",
+     "seconds": 0.1,
+     "status": "ok"
+    },
+    {
+     "step": "KPIs",
+     "seconds": 0.171,
+     "status": "ok"
+    },
+    {
+     "step": "Data findings",
+     "seconds": 0.341,
+     "status": "ok"
+    },
+    {
+     "step": "Forecast",
+     "seconds": 0.06,
+     "status": "ok"
+    },
+    {
+     "step": "Anomalies",
+     "seconds": 0.174,
+     "status": "ok"
+    },
+    {
+     "step": "Segmentation",
+     "seconds": 0.264,
+     "status": "ok"
+    },
+    {
+     "step": "Drivers",
+     "seconds": 9.543,
+     "status": "ok"
+    },
+    {
+     "step": "Insights",
+     "seconds": 0.003,
+     "status": "ok"
+    },
+    {
+     "step": "Build report (incl. charts)",
+     "seconds": 0.373,
+     "status": "ok"
+    },
+    {
+     "step": "PDF render",
+     "seconds": 0.771,
+     "status": "ok"
+    },
+    {
+     "step": "HTML render",
+     "seconds": 0.001,
+     "status": "ok"
+    }
+   ]
+  },
+  "DataCoSupplyChainDataset.csv": {
+   "rows": 180519,
+   "cols": 53,
+   "steps": [
+    {
+     "step": "Ingest + profile",
+     "seconds": 6.304,
+     "status": "ok"
+    },
+    {
+     "step": "Semantic model",
+     "seconds": 0.88,
+     "status": "ok"
+    },
+    {
+     "step": "KPIs",
+     "seconds": 2.061,
+     "status": "ok"
+    },
+    {
+     "step": "Data findings",
+     "seconds": 2.083,
+     "status": "ok"
+    },
+    {
+     "step": "Forecast",
+     "seconds": 0.861,
+     "status": "ok"
+    },
+    {
+     "step": "Anomalies",
+     "seconds": 0.424,
+     "status": "ok"
+    },
+    {
+     "step": "Segmentation",
+     "seconds": 3.839,
+     "status": "ok"
+    },
+    {
+     "step": "Drivers",
+     "seconds": 16.337,
+     "status": "ok"
+    },
+    {
+     "step": "Insights",
+     "seconds": 0.004,
+     "status": "ok"
+    },
+    {
+     "step": "Build report (incl. charts)",
+     "seconds": 0.43,
+     "status": "ok"
+    },
+    {
+     "step": "PDF render",
+     "seconds": 0.963,
+     "status": "ok"
+    },
+    {
+     "step": "HTML render",
+     "seconds": 0.002,
+     "status": "ok"
+    }
+   ]
+  }
+ }
+}

@@ -4,7 +4,10 @@
 |---|---|
 | 1 Foundation | Done |
 | 2 Ingestion + profiling | Done (59 automated tests passed in author's sandbox; re-run locally) |
-| 3 Cleaning | Not started |
+| 3 Cleaning | Implemented; 22 tests pass in author's sandbox (UI not run, see below) |
+| 4 Semantics (A+B+C) | Implemented. Rules, domain, overrides, optional trained name model with held-out evaluation. 25 semantic/training tests pass in author's sandbox (UI not run in a browser) |
+| 5 Descriptive analytics + KPIs | Implemented. 37 new tests; logic checked against raw pandas on all four real datasets (see below). Dashboard/Explorer not yet run in a real browser |
+| UI redesign | Applied (theme, CSS design system, grouped navigation, Semantics page) |
 
 ## Phase 2 files
 | Path | Purpose |
@@ -29,3 +32,257 @@ Browser appearance on Windows, upload through the real file widget, pandas 2.x.
 
 ## Update: broader input support
 .tsv/.txt/.xls/.xlsm accepted; title rows above headers skipped; decimal commas; UTF-16 text. Legacy .xls verified via xlwt-generated file in sandbox only.
+
+## Phase 3 files
+| Path | Purpose |
+|---|---|
+| cleaning/actions.py | CleaningAction (what/why/rows/consequence/risk), LogEntry, helpers |
+| cleaning/type_inference.py | text -> number / date / boolean proposals and operations |
+| cleaning/labels.py | inconsistent labels, whitespace, column-name normalisation |
+| cleaning/missing_values.py | median / 'Unknown' fill, drop rows/columns (never zero-fill, never default-on) |
+| cleaning/duplicate_handler.py | exact and near-duplicate rows (keep first, original index kept) |
+| cleaning/outlier_handler.py | IQR cap/remove, negatives-to-missing (never default-on) |
+| cleaning/cleaner.py | propose_actions, apply_actions, select_with_dependencies, actions_fingerprint |
+| ui/state.py, ui/data_quality_page.py, ui/sidebar.py | Cleaning + History tabs, active-dataset switch |
+| tests/test_cleaning.py | 22 tests |
+
+Later phases should read data via `ui.state.get_analysis_df()` (cleaned data if applied, else original).
+
+## Phase 3 not verified
+Streamlit rendering of the Cleaning/History tabs, data_editor behaviour, download buttons, pandas 2.x.
+Known limits: Profile page still shows the original data's profile; outliers use a fixed IQR rule (k=3);
+near-duplicate scan skipped above 3M cells.
+
+## Phase 4 files (batches A and B)
+| Path | Purpose |
+|---|---|
+| semantic/column_lexicon.py | roles, name vocabulary, domain vocabulary, tokeniser |
+| semantic/column_classifier.py | rule scoring: name + kind + value distribution + column relationships; optional NameModel hook |
+| semantic/business_domain.py | domain detection with confidence, evidence, alternatives; falls back to "general" |
+| semantic/semantic_model.py | SemanticModel, user overrides (roles recompute domain), fingerprint for cache keys |
+| ui/semantic_page.py, ui/state.py, app.py | Semantics page, cached model keyed by data + cleaning + overrides |
+| ui/layout.py, .streamlit/config.toml, assets/logo.svg | design system and theme |
+| tests/test_semantics.py | 15 tests |
+
+Roles added beyond the spec list: `price` (unit price) and `duration` (days/hours/tenure).
+Downstream code should call `ui.state.get_semantic_model()` and use `columns_with_role()`.
+
+## Phase 4 / redesign not verified
+Streamlit rendering of the Semantics page and the new CSS (stat strips, sidebar, tabs), the Inter web font
+(needs internet, falls back to system fonts), `st.logo` with SVG, data_editor save flow, narrow-screen layout.
+Known limits: scores are heuristics; domain for supply-chain data may read as Retail or Inventory
+(override available); dark theme only.
+
+## Phase 4 batch C (trained name model) and UI update
+| Path | Purpose |
+|---|---|
+| training/make_data.py | hand-written seed names, variants, train/test split by base name, hand-labelled real headers |
+| training/train_semantic_model.py | TF-IDF (word + char n-grams) + logistic regression; C chosen by grouped CV on training data only |
+| training/evaluate_semantic_model.py | held-out evaluation, name-only rules baseline, optional end-to-end check on your files |
+| semantic/trained_name_model.py | trusted loader: checksum + version checks, lazy sklearn import, safe fallback |
+| ui/overview_page.py | new home page: counts, quality, workflow strip, detected roles (no invented KPIs) |
+| ui/semantic_page.py | tabs: Column roles, Review queue (one-click fixes), Role mix, Trained model |
+| ui/settings_page.py, ui/state.py, ui/layout.py, app.py | model status/toggle, cache key includes model version, new CSS helpers, Overview is the default page |
+| tests/test_semantic_training.py | 10 tests |
+
+### Evaluation result after expanding the training names (author's sandbox, seed 42)
+Training names: 1,246 distinct base names (was 367), with short forms, prefixes, suffixes and varied separators.
+| Test set | Trained model | Rules by name only |
+|---|---|---|
+| Held-out synthetic names (n=5,507) | 86.0% | 57.9% |
+| Names from industries not in training (n=1,685) | 85.8% | 59.5% |
+| Hand-labelled real headers (n=73) | 93.2% | 80.8% |
+| End to end on 4 supply-chain files (rules+values vs +model) | 97.3% | 95.9% (1 column changed) |
+
+Read with care: (1) the synthetic test names are generated by the same variation process as the training names
+(same abbreviation list and affixes), so the model's lead there is flattered, while the rules were not built for
+abbreviated names. (2) The seed names were written by the same author who labelled the real headers and had seen
+those headers, so the real-header score is optimistic. (3) The blend weight is 0.30, so the model mostly shifts
+confidence and rarely overturns a confident rule. The honest test is your own new files.
+
+## Phase 4 batch C not verified
+Streamlit rendering of the new pages (only a stubbed-Streamlit smoke test was run), tests/test_app_startup.py
+(needs Streamlit; the sample-data test now relies on the Overview page), training on Windows, scikit-learn versions other than the sandbox's.
+
+
+## Phase 5 files
+| Path | Purpose |
+|---|---|
+| analytics/descriptive.py | numeric/categorical/date summaries, time aggregation (partial periods flagged), grouped summaries, cross-tabs, Top-N + Other |
+| analytics/correlation.py | correlation of suitable numeric columns; constant and sparse columns excluded and listed; top pairs |
+| analytics/kpis.py | role-driven KPI engine (KPIResult, DataFilter, cache_key); a KPI exists only when its roles exist |
+| analytics/formatting.py | KPI value display (no currency symbol is assumed) |
+| visualization/charts.py | Plotly builders; NaN/inf cleaned, categories capped, scatter sampled |
+| ui/analytics_state.py | session cache keyed on dataset + cleaning + roles + overrides + parameters |
+| ui/dashboard_page.py, ui/explorer_page.py | Dashboard (KPIs, trend, breakdown, distribution, correlation) and Data explorer (100 rows per page) |
+| config/analytics_config.py | AnalyticsConfig added |
+| tests/test_descriptive.py, test_kpis.py, test_charts.py | hand-calculated expectations |
+
+KPI rules: margin = SUM(profit)/SUM(revenue); zero denominator gives value None with a "Not calculable" limitation;
+growth compares only complete periods and is skipped when the comparison total is zero/negative or missing;
+identifier, customer, product, category, location and date columns are never summed or averaged;
+inventory KPIs use the latest snapshot only; estimated revenue (units x unit price) appears only if no revenue column exists.
+
+## Phase 5 verified (sandbox, Python 3.12, pandas 3.0)
+Full suite except tests/test_app_startup.py: 141 passed, 2 skipped (plotly, xlwt not installed there).
+KPI values cross-checked against independent pandas on DataCo (revenue, orders, customers, profit, margin, Jan-2018 growth),
+supply_chain_dataset1 (stock, stock value, estimated revenue) and the inventory xlsx (growth, category share).
+Dashboard and Explorer page code was executed against a stand-in for Streamlit on all four real files, including a role
+override and filters (filtered totals matched raw pandas).
+
+## Phase 5 not verified
+Real Streamlit rendering, real Plotly figures (builders ran only against a recording stand-in), tests/test_app_startup.py,
+pandas 2.x. Known limits: roles come from heuristics (e.g. 'on_time_delivery' in the manufacturing sample is labelled
+identifier); 'Top category' uses whichever category column ranks first (for the inventory file that is 'status').
+
+## Batch A: supply-chain semantics (after Phase 5)
+- New roles: supplier, warehouse, flag (yes/no status such as on-time, stockout, delayed). New domain: supply_chain.
+- Yes/No status columns are no longer labelled identifier; two-valued 0/1 columns are not read as percentages.
+- New roles are never summed or averaged (descriptive + KPI engine).
+- Name model retrained (seed 42). Held-out synthetic acc 0.844 / macro-F1 0.818 (was 0.860 / 0.864: new roles have few seed names, warehouse recall is low). Real headers (n=73) acc 0.932, unchanged. Synthetic and hand-labelled names only.
+- Tests: 152 passed, 1 skipped (was 144). Not verified: the four real datasets (not available in the sandbox), real Streamlit rendering.
+- Next: Batch B, supply-chain KPIs (OTIF, fill rate, lead time, stockout, defect, turnover).
+
+## Batch B: supply-chain KPIs and data-validity guards
+New: `analytics/supply_chain_kpis.py` (on-time rate, average delay, lead time, fill rate, OTIF, stockout rate,
+share of stock rows below reorder point, days of cover, inventory turnover, defect rate, top-1 and top-3 supplier
+share, purchase spend), `analytics/kpi_relevance.py` (headline KPIs by domain; hidden KPIs stay listed),
+`analytics/data_checks.py` (flag parsing, personal-data column names), `tests/test_supply_chain_kpis.py` (21 tests,
+hand-calculated).
+Changed: `analytics/kpis.py` (runs the new builders; procurement data shows spend instead of revenue, cancelled
+orders excluded; status columns are no longer a revenue "category"; growth skipped when one period has more than
+10x the rows of the other; report notes list personal-data columns and "Data check" findings),
+`config/analytics_config.py` (`growth_max_row_ratio`), `ui/dashboard_page.py` (top-6 cards, more/unavailable groups).
+Checked on the four real files against raw pandas: PO workbook on-time 22.28%, delay 5.49 days, lead time 37.02
+days, fill rate 96.15%, OTIF 20.49%.
+Not verified: Streamlit rendering of the new dashboard section; `tests/test_app_startup.py`; run `pytest` locally.
+Known data problems found (not code bugs): the manufacturing sample's `on_time_delivery` holds placeholder text and
+12 of 25 rows have defects above units; the inventory CSV's `Stockout_Flag` is all zero.
+Next: Batch C (supply-chain charts, suggested views with captions, primary-column picker).
+
+## Batch C: suggested views and primary-column picker
+New: `analytics/supply_chain_views.py` (up to 4 views chosen from roles: lowest on-time rate by supplier or shipping
+mode, lead-time distribution, stock vs reorder point, defect rate over time or by group, supplier share, plus general
+trend and category share; each caption computed from the plotted table), `analytics/primary_columns.py`
+(candidates and override editing), `tests/test_supply_chain_views.py` (13 tests, hand-calculated captions).
+Changed: `visualization/charts.py` (`multi_line_chart`), `analytics/supply_chain_kpis.py` (`lead_days` and
+`supplier_shares` helpers shared with the views), `ui/dashboard_page.py` (Suggested views section, Primary columns
+picker that records a role override so KPIs and charts refresh).
+Checked: the dashboard KPI and views sections run on all four real files against a stand-in Streamlit and Plotly.
+Not verified: real browser rendering, `tests/test_app_startup.py`, real Plotly figures. Run `pytest` and
+`streamlit run app.py` locally.
+
+## Phase 6A: Forecasting
+| Path | Purpose |
+|---|---|
+| analytics/forecasting.py | Series preparation, seasonality check, 8 candidate models, rolling-origin validation, simplest-within-margin selection, empirical intervals |
+| ui/forecasting_page.py | Forecasting page (Analyze group) |
+| visualization/charts.py | `forecast_chart` added |
+| core/exceptions.py, config/analytics_config.py, requirements.txt, app.py | `ForecastingError`, forecast settings, statsmodels, page registered |
+| tests/test_forecasting.py, tests/test_forecasting_page.py | 19 tests incl. real Streamlit AppTest |
+
+Run in author's sandbox (Python 3.12, pandas 3, statsmodels 0.15, Streamlit, Plotly): full suite 203 passed + the new page tests. Not run on the four real datasets (files not available in the sandbox) or on Windows.
+
+## Phase 6B: Anomaly detection
+| Path | Purpose |
+|---|---|
+| analytics/anomaly_detection.py | Median/MAD, IQR and z-score rules (z-score only where roughly normal), Isolation Forest on suitable numeric features (fixed seed, missing rows left out), unusual-period detection against a robust baseline, feature comparison |
+| ui/anomaly_page.py | Anomalies page (sensitivity 1-5; Unusual values and Unusual periods tabs) |
+| visualization/charts.py | `anomaly_series_chart` added |
+| core/exceptions.py, config/analytics_config.py, app.py | `AnomalyDetectionError`, anomaly settings, page registered |
+| tests/test_anomaly_detection.py, tests/test_anomaly_page.py | hand-calculated rules, planted outliers, sensitivity, reproducibility, independence, real Streamlit AppTest |
+
+Nothing is deleted or changed; every finding carries method, score, threshold, direction and a plain explanation with the "not necessarily an error" note. Not run on the four real datasets (not available in the author's sandbox).
+
+## Phase 6C: Segmentation
+| Path | Purpose |
+|---|---|
+| analytics/segmentation.py | Entity candidates (supplier, customer, product, warehouse), one-row-per-entity features (on-time rate, delay, lead time, fill rate, defect rate, stockout rate, value, volume, other measures by role), explicit missing/constant/duplicate handling, KMeans with elbow and silhouette, smallest-cluster guard, plain-words cluster traits, fixed seed |
+| ui/segmentation_page.py | Segmentation page (runs only on button press; feature, scaling and K choices) |
+| visualization/charts.py | `segment_scatter` added |
+| tests/test_segmentation.py, tests/test_segmentation_page.py | hand-calculated entity features, cluster recovery, reproducibility, guard rails, AppTest |
+
+## Phase 6D: Driver analysis
+| Path | Purpose |
+|---|---|
+| analytics/drivers.py | Random Forest on a held-out split (chronological when a date exists), trivial-baseline comparison, permutation importance on held-out rows, leakage rules (name overlap, near-copy correlation, categorical copy, profit/revenue ties), reliability flag, dominance warning, group tables, association-not-causation note |
+| ui/drivers_page.py | Drivers page (target and column choice; runs on button press) |
+| ui/analysis_runner.py | Shared cached wrapper that turns failures into messages |
+| core/exceptions.py, config/analytics_config.py, app.py | `SegmentationError`, `DriverAnalysisError`, settings, pages registered |
+| tests/test_drivers.py, tests/test_drivers_page.py | importance ranking, leakage, chronological split, noise flagged unreliable, classification, reproducibility, AppTest |
+
+Run on the four real files in the author's sandbox (no Streamlit or statsmodels there): PO workbook supplier segmentation gives
+weak structure (silhouette 0.23), which the page reports as weak; driver analysis on the real files runs in 1 to 7 seconds.
+Not verified: the two new pages in real Streamlit (tests/test_*_page.py need it), real Plotly figures.
+
+## Phase 7: Insights and recommendations
+| Path | Purpose |
+|---|---|
+| insights/evidence.py | `Evidence` and `Insight` types; an insight cannot exist without evidence |
+| insights/insight_rules.py | 14 deterministic rules over KPI results, the data profile and Phase 6 results (growth, category share, supply-chain KPI levels, margin, missing KPIs, missing values, duplicates, tiny data, forecast direction and reliability, anomaly share, small high-value segments, drivers) |
+| insights/prioritization.py | priority = 10 x severity weight + confidence weight; stable sort |
+| insights/insight_engine.py | runs every rule independently; rules without inputs or that fail are listed as skipped with a reason |
+| insights/default_runs.py | default-setting runs of forecast, anomalies, segmentation, drivers (used by the page) |
+| analytics/recommendations.py | template recommendations, each linked to an insight id |
+| config/analytics_config.py | `InsightConfig` (all thresholds, shown on each insight; adjustable reference levels, not industry standards) |
+| ui/insights_page.py, app.py | Insights page (severity/group filters, evidence, limitations, skipped rules); advanced analyses run on button press |
+| tests/test_insights.py, tests/test_insights_page.py | hand-calculated rule outcomes, determinism, evidence and recommendation links, failure isolation, AppTest |
+
+Tests: 275 passed, 1 skipped (Python 3.12, pandas 3.0.6, Streamlit 1.67 in the author's sandbox). Run on supply_chain_dataset1.csv:
+forecast +13% (checked by hand: 5,332.7 vs 4,729.6), no KPI crossed a threshold, drivers insight flags that Demand_Forecast
+holds about 100% of importance for Units_Sold (a near-copy of the target, shown as low confidence). Not run on the other three datasets.
+No LLM layer (optional, off by default, not built). Known limit: insights use default analysis settings, not the settings chosen on the other pages.
+
+### Phase 7 addendum: data-pattern insights
+`analytics/data_findings.py` reads patterns straight from the data (group gaps, flag effects, weekday pattern, latest-month trend,
+top-10% concentration, accuracy of a forecast column in the file) and 7 more rules turn them into insights (`group_gap`, `flag_effect`,
+`weekday`, `trend`, `concentration`, `forecast_accuracy`, `cover`). `tests/test_data_findings.py` has hand-calculated cases (12 tests).
+On supply_chain_dataset1.csv: promotion rows +28% units (pandas check 27.7%), lead time varies 85% across SKUs (check 85.2%),
+Nov vs Oct units +23.2% (pandas check 23.25%; December is excluded as a partial month because the data ends on Dec 30). Group differences and flag effects are associations, not tests of significance.
+
+## Phase 8: Reports and exports
+| Path | Purpose |
+|---|---|
+| reporting/theme.py | Three-colour palette in a 70 / 25 / 5 ratio (paper / ink navy / accent orange); greys are mixes of these |
+| reporting/report_builder.py | `build_report(...)` turns computed results into one renderer-neutral `ReportData`; skipped analyses carry their reason; each section fails on its own |
+| reporting/charts.py | Matplotlib charts in the palette (bars, forecast with interval) |
+| reporting/html_report.py | One self-contained HTML file (charts embedded, all text escaped, print styles) |
+| reporting/pdf_report.py | ReportLab PDF: cover, contents with page numbers, running header/footer, bookmarks, DejaVu fonts bundled with Matplotlib |
+| ui/reports_page.py, app.py | Reports page (title, prepared-for, options, downloads for PDF/HTML, analysed-data CSV on request, log CSV); reuses cached Insights-page results |
+| core/exceptions.py, requirements.txt | `ReportGenerationError`; matplotlib and reportlab added |
+| tests/test_reporting.py | 13 tests: values match KPI results and pandas, hand-calculated forecast lead, escaping, skipped sections, failure isolation |
+
+Verified in the author's sandbox (no Streamlit, no statsmodels, no pytest, so tests ran through a small shim): 13/13 reporting tests pass; PDF and HTML
+generated on all four real files (DataCo: PDF 1 s). Forecast sections were checked with a hand-built result
+because statsmodels was missing. Not verified: the Reports page in real Streamlit, PDF in Acrobat.
+
+## Phase 9, Batch 1: fixes and semantic layer
+- **Vocabulary:** supply-chain terms (inventory, procurement, logistics, warehouse, manufacturing, quality) added to `semantic/column_lexicon.py`; short forms (supp, vndr, wh, shpmt, dlvry, qty ...), glued names (vendorid, supplierkey), and one-letter misspellings (suppllier, delivary, warehose) are repaired by `semantic_tokens`. The classifier and domain detection use it; other modules still use the plain `token_set`.
+- **Generic headers (Amount, Value, Total, Code, Rate, Cost, Location, Reference, Time):** confidence capped at 45% so they are flagged for review. Neighbouring columns decide the meaning: purchasing/logistics neighbours point to cost, sales neighbours to revenue, none leaves it low-confidence.
+- **Fixes:** inventory turnover is no longer revenue; image/URL columns are text, not products; first/last-name columns are treated as personal data and excluded; weight, distance and capacity are not forced into "quantity" (that would put them in the units KPI); duplicate concentration insights (Product Image / Product Name) are merged.
+- **Insights and Reports reuse your own settings:** analyses run on the Forecasting, Anomalies, Segmentation and Drivers pages are reused when they exist for the current data; others use defaults. The report states which.
+- **Model:** training data now has labelled supply-chain headers (half trained on, half held out), misspelling augmentation and more short forms. `evaluate_semantic_model` reports a supply-chain held-out line. Retrain locally: `python -m training.make_data`, `python -m training.train_semantic_model`, `python -m training.evaluate_semantic_model`.
+- **Tests:** `tests/test_supply_chain_headers.py` (13 tests).
+
+## Phase 9, Batch 2: performance, report options, progress bars
+**Excel export was deliberately removed** (module, button, tests, documentation). Reports are PDF and HTML only. `openpyxl` stays in
+`requirements.txt` because it reads uploaded .xlsx files.
+
+**Settings / behaviour**
+- Reports: PDF is the main button; "Also build HTML" is unchecked by default. The analysed-data CSV is built only when you press "Prepare CSV" (3.5 s and 97 MB on DataCo); the transformation-log CSV stays a normal download.
+- Report steps: Metrics, Insights, Forecast, Anomalies, Segments, Drivers, PDF, HTML (if ticked), each shown as "Step k of n: name" with elapsed time. A step that fails or cannot run is listed as skipped with the reason and the run continues. Insights now follows the data patterns step; the insight text itself is assembled inside the PDF step because it needs every analysis result.
+- Bars: Reports, Insights (four advanced analyses), Forecasting ("Comparing models, 3 of 7"), Anomalies, Segmentation, Drivers, and Upload for files of 5 MB or more. A single model fit or clustering shows its name, not a percentage. Estimated time appears only when the run is expected to take 8 s or more, from the row count (`core/estimates.py`, rates from `docs/PERFORMANCE.md`).
+- `BI_WORKERS=<n>` sets the thread count for drivers (default: CPU count, at most 4; 1 turns threading off). Results never depend on it.
+- Semantics page: "Generic header, please confirm" badge (review queue and table); a "Competing columns" tab shows which column is used for revenue, category and date, and why.
+
+**Files changed:** `analytics/{anomaly_detection,drivers,forecasting,kpis,primary_columns,segmentation,supply_chain_kpis}.py`, `core/{estimates,parallel,progress}.py` (new), `ingestion/{pipeline,profiler,schema_detector}.py`, `insights/default_runs.py`, `reporting/{assembly (new),report_builder,theme}.py`, `semantic/column_classifier.py`, `scripts/{benchmark,snapshot_roles}.py` (new), `ui/{reports_page,insights_page,forecasting_page,anomaly_page,segmentation_page,drivers_page,dashboard_page,upload_page,semantic_page,user_runs}.py`, `ui/{progress_bar,shared_results}.py` (new), tests, docs. **Deleted:** `reporting/excel_export.py`.
+
+**Domain label for DataCo ("retail", 36%) - investigated, not changed.** Retail scores 7 matched terms (order, item, category, customer, discount, price, product) plus 5 supported roles; supply chain scores 3 (order, delivery, shipping) and 17% after normalising. The generic commerce words outvote the few logistics words. Re-weighting generic words would be tuned on one file, and the rule was to change it only if the other three real files keep their domain; only one of them (supply_chain_dataset1 -> supply_chain, 37%) could be checked here. The label affects wording only: supply-chain KPIs are chosen by columns, not by domain. `tests/test_role_stability.py` pins both domains.
+
+**Tests run (sandbox, stand-in runner, no pytest):** 330 passed, 1 failed, 19 skipped with the two available real files on the path (328 passed, 21 skipped without them). The failure (`test_manual_model_choice_is_honoured_and_reported`) needs statsmodels, which the sandbox lacks, and failed the same way before any change. Skipped: Streamlit page tests, plotly tests, and two real-file tests whose files were not available. New: `test_progress.py` (14), `test_report_assembly.py` (10), `test_drivers_permutation.py` (5), `test_role_stability.py` (7 + 2 skipped), `test_waste_removed.py` (3). A bug in the first version of the faster permutation code (an all-missing numeric column shifted the column layout) was caught by `test_unexpected_layout_falls_back_to_scikit_learn` and fixed.
+
+**Known issues / not verified**
+- No Streamlit, plotly, statsmodels, pytest or ruff in the sandbox. The new and changed pages (Reports, Insights, Dashboard KPI sharing, the five progress bars, Upload bar, Semantics additions) compile but were **never run**. Run `python -m pytest -q` and click through them.
+- Thread speed-ups for drivers were not measured (1 CPU). Forecast timings exclude statsmodels models.
+- The manufacturing sample and the inventory workbook were not available: their role-stability test is skipped here. Put them in `tests/real_files/` (or set `BI_REAL_FILES_DIR`) and run `python -m pytest tests/test_role_stability.py -q`; it compares the new code with the original algorithm directly, so no golden is needed.
+- Progress callbacks fire only when a result is computed, not when it comes from the cache.

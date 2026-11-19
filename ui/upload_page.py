@@ -1,6 +1,8 @@
 """Upload page: validate, parse, profile and preview a dataset."""
 from __future__ import annotations
 
+from datetime import datetime
+
 import streamlit as st
 
 from config.settings import EXCEL_EXTENSIONS, SUPPORTED_EXTENSIONS, Settings
@@ -8,10 +10,88 @@ from core.exceptions import BIError
 from core.logging_config import get_logger
 from ingestion.file_loader import fingerprint_bytes, list_excel_sheets
 from ingestion.pipeline import ingest_bytes, ingest_sample
-from ui import state
-from ui.layout import fmt_int, page_title
+from storage import repository
+from ui import auth_state, state
+from ui.progress_bar import ProgressBar
+from ui.layout import empty_state, fmt_int, md_escape, page_title
 
 log = get_logger("ui.upload")
+LARGE_FILE_BYTES = 5 * 1024 * 1024
+_UPLOADER_VER = "upload_widget_version"
+_FLASH = "upload_flash"
+
+
+def _reset_uploader() -> None:
+    """A fresh file uploader, so a file left in it does not replace a dataset opened another way."""
+    st.session_state[_UPLOADER_VER] = st.session_state.get(_UPLOADER_VER, 0) + 1
+
+
+def _store(data: bytes, filename: str, sheet: str | None, loaded) -> str | None:
+    """Save the upload to the signed-in user's datasets. Returns the record id, or None if it could not be saved."""
+    user = auth_state.require_user()
+    try:
+        rec = repository.save_dataset(user.id, data, filename, sheet, loaded.dataset.fingerprint, loaded.profile.rows, loaded.profile.columns)
+        return rec.id
+    except Exception:
+        log.exception("Could not store the uploaded dataset")
+        st.session_state[_FLASH] = "The file was loaded, but it could not be saved to your datasets. It is available for this session only."
+        return None
+
+
+def _when(ts: float) -> str:
+    return datetime.fromtimestamp(ts).strftime("%d %b %Y, %H:%M")
+
+
+def _open_saved(settings: Settings, dataset_id: str) -> None:
+    user = auth_state.require_user()
+    try:
+        rec, data = repository.read_dataset(user.id, dataset_id)          # ownership is checked here
+        with st.spinner("Opening dataset..."):
+            loaded = ingest_bytes(data, rec.filename, max_bytes=settings.max_upload_bytes, sheet=rec.sheet)
+    except repository.NotFound:
+        st.error("That dataset is no longer available.")
+        return
+    except BIError as exc:
+        st.error(exc.user_message)
+        return
+    except Exception:
+        log.exception("Could not open a saved dataset")
+        st.error("The saved dataset could not be opened. Details were written to the application log.")
+        return
+    _reset_uploader()
+    state.set_result(loaded, dataset_id=rec.id)
+    st.rerun()
+
+
+def _saved_datasets(settings: Settings) -> None:
+    """The signed-in user's own uploads, newest first. Other users' datasets are never listed or reachable."""
+    user = auth_state.require_user()
+    records = repository.list_datasets(user.id)
+    st.subheader("Your datasets")
+    if not records:
+        st.caption("Files you upload are saved to your account, so you can reopen them later.")
+        return
+    active = state.get_dataset_id()
+    for rec in records:
+        with st.container(border=True):
+            info, open_col, del_col = st.columns([6, 1.3, 1.2], vertical_alignment="center")
+            meta = f"{fmt_int(rec.rows)} rows · {rec.columns} columns · {rec.size_bytes / 1024 / 1024:.1f} MB · uploaded {_when(rec.created_at)}"
+            if rec.sheet:
+                meta = f"Sheet {rec.sheet} · " + meta
+            info.markdown(f"**{md_escape(rec.filename)}**" + (" :green-badge[Active]" if rec.id == active else ""))
+            info.caption(meta)
+            if open_col.button("Open", key=f"ds_open_{rec.id}", disabled=rec.id == active, width="stretch"):
+                _open_saved(settings, rec.id)
+            with del_col.popover("Delete", width="stretch"):
+                st.caption("Delete this dataset and its stored file? Reports already built from it are kept.")
+                if st.button("Delete dataset", key=f"ds_del_{rec.id}", type="primary"):
+                    try:
+                        repository.delete_dataset(user.id, rec.id)
+                    except repository.NotFound:
+                        pass
+                    if rec.id == active:
+                        state.clear_result()
+                    st.rerun()
 
 
 def _show_loaded(settings: Settings) -> None:
@@ -48,10 +128,13 @@ def render_upload_page(settings: Settings) -> None:
     page_title("Upload", f"Supported: {', '.join(SUPPORTED_EXTENSIONS)}. Any dataset works, up to {settings.max_upload_mb} MB.")
     left, right = st.columns([3, 1], vertical_alignment="bottom")
     uploaded = left.file_uploader("Data file", type=[e.lstrip(".") for e in SUPPORTED_EXTENSIONS],
-                                  label_visibility="collapsed")
+                                  label_visibility="collapsed", key=f"uploader_{st.session_state.get(_UPLOADER_VER, 0)}")
     if right.button("Load sample data", help="Synthetic sales data for trying the app"):
+        _reset_uploader()
         state.set_result(ingest_sample())
         st.rerun()
+    if (flash := st.session_state.pop(_FLASH, None)) is not None:
+        st.warning(flash)
 
     if uploaded is not None:
         try:
@@ -68,9 +151,13 @@ def render_upload_page(settings: Settings) -> None:
                     sheet = sheets[0]
             current = state.get_result()
             if current is None or current.dataset.fingerprint != fingerprint_bytes(data, sheet):
-                with st.spinner("Reading and profiling file..."):
-                    state.set_result(ingest_bytes(data, uploaded.name, max_bytes=settings.max_upload_bytes,
-                                                  sheet=sheet))
+                if len(data) >= LARGE_FILE_BYTES:            # a bar for large files; small ones load too fast to need it
+                    with ProgressBar("Reading and profiling the file", numbered=True) as bar:
+                        loaded = ingest_bytes(data, uploaded.name, max_bytes=settings.max_upload_bytes, sheet=sheet, progress=bar)
+                else:
+                    with st.spinner("Reading and profiling file..."):
+                        loaded = ingest_bytes(data, uploaded.name, max_bytes=settings.max_upload_bytes, sheet=sheet)
+                state.set_result(loaded, dataset_id=_store(data, uploaded.name, sheet, loaded))
                 st.rerun()
         except BIError as exc:
             log.info("Upload rejected: %s", type(exc).__name__)
@@ -83,8 +170,8 @@ def render_upload_page(settings: Settings) -> None:
                      "XLSX file. Details were written to the application log.")
 
     if state.get_result() is None:
-        with st.container(border=True):
-            st.markdown("**No dataset loaded**")
-            st.caption("Drop a file above to see its structure, missing values and quality issues.")
+        empty_state("No dataset loaded", "Drop a file above, or open one of your saved datasets below.")
     else:
         _show_loaded(settings)
+    st.write("")
+    _saved_datasets(settings)

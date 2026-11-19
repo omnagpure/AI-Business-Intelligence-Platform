@@ -25,14 +25,15 @@ class ColumnSchema:
     is_constant: bool = False
 
 
-def _sample(s: pd.Series, n: int) -> pd.Series:
-    nn = s.dropna()
+def _sample(s: pd.Series, n: int, nn: pd.Series | None = None) -> pd.Series:
+    """Up to n non-missing values (fixed seed). Pass `nn` (= s.dropna()) when the caller already has it."""
+    nn = s.dropna() if nn is None else nn
     return nn if len(nn) <= n else nn.sample(n, random_state=0)
 
 
-def numeric_text_ratio(s: pd.Series, n: int = 2000) -> float:
+def numeric_text_ratio(s: pd.Series, n: int = 2000, nn: pd.Series | None = None) -> float:
     """Share of non-null string values that parse as numbers (after stripping currency/commas)."""
-    sample = _sample(s, n).astype(str)
+    sample = _sample(s, n, nn).astype(str)
     if sample.empty:
         return 0.0
     cleaned = sample.str.replace(_CURRENCY, "", regex=True)
@@ -73,8 +74,8 @@ def parse_datetime_series(s: pd.Series) -> pd.Series:
         return pd.to_datetime(strs, errors="coerce", format="mixed")
 
 
-def date_text_ratio(s: pd.Series, n: int = 500) -> float:
-    sample = _sample(s, n).astype(str)
+def date_text_ratio(s: pd.Series, n: int = 500, nn: pd.Series | None = None) -> float:
+    sample = _sample(s, n, nn).astype(str)
     if sample.empty:
         return 0.0
     looks = sample.str.contains(r"[-/:]|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", case=False, regex=True)
@@ -90,9 +91,9 @@ def is_boolean_like(s: pd.Series) -> bool:
     return 0 < len(vals) <= 2 and vals <= {"true", "false", "yes", "no", "y", "n", "t", "f"}
 
 
-def detect_column(s: pd.Series, thresholds: QualityThresholds = DEFAULT_THRESHOLDS) -> ColumnSchema:
+def detect_column(s: pd.Series, thresholds: QualityThresholds = DEFAULT_THRESHOLDS, nn: pd.Series | None = None) -> ColumnSchema:
     name, dtype = str(s.name), str(s.dtype)
-    nn = s.dropna()
+    nn = s.dropna() if nn is None else nn
     n = len(nn)
     if n == 0:
         return ColumnSchema(name, dtype, "empty", is_constant=False)
@@ -118,15 +119,15 @@ def detect_column(s: pd.Series, thresholds: QualityThresholds = DEFAULT_THRESHOL
         return ColumnSchema(name, dtype, "numeric", is_constant=constant)
 
     # object / string columns
-    if numeric_text_ratio(s) >= thresholds.numeric_text_ratio:
-        txt = _sample(s, 200).astype(str)
+    if numeric_text_ratio(s, nn=nn) >= thresholds.numeric_text_ratio:
+        txt = _sample(s, 200, nn).astype(str)
         looks_code = txt.str.match(r"^0\d+$").mean() > 0.5  # zero-padded codes stay as text
         if not looks_code:
             return ColumnSchema(name, dtype, "numeric", stored_as_text=True, is_constant=constant)
-    if date_text_ratio(s) >= thresholds.date_text_ratio:
+    if date_text_ratio(s, nn=nn) >= thresholds.date_text_ratio:
         return ColumnSchema(name, dtype, "temporal", stored_as_text=True, is_constant=constant)
 
-    strs = _sample(s, thresholds.sample_size).astype(str)
+    strs = _sample(s, thresholds.sample_size, nn).astype(str)
     avg_len = float(strs.str.len().mean())
     avg_words = float(strs.str.split().str.len().mean())
     name_hint = bool(_ID_NAME.search(name))

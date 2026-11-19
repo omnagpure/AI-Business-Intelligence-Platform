@@ -7,3 +7,6 @@ __pycache__/
 data_store/
 logs/
 *.log
+training/data/
+training/models/*.joblib
+training/models/*.json

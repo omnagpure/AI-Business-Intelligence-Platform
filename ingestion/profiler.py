@@ -12,6 +12,7 @@ from pandas.api import types as pdt
 from config.analytics_config import DEFAULT_THRESHOLDS, QualityThresholds
 from core.exceptions import DataValidationError, ProfilingError
 from core.logging_config import get_logger
+from core.progress import ProgressFn, notify
 from ingestion.schema_detector import ColumnSchema, detect_column, parse_datetime_series
 
 log = get_logger("ingestion.profiler")
@@ -108,9 +109,9 @@ def _top_values(nn: pd.Series, total: int, k: int) -> list[dict[str, Any]]:
 
 
 def profile_column(s: pd.Series, t: QualityThresholds = DEFAULT_THRESHOLDS) -> ColumnProfile:
-    schema: ColumnSchema = detect_column(s, t)
     total = len(s)
-    nn = s.dropna()
+    nn = s.dropna()                                  # computed once and shared with the schema detector
+    schema: ColumnSchema = detect_column(s, t, nn)
     missing = total - len(nn)
     unique = int(nn.nunique())
     prof = ColumnProfile(
@@ -151,12 +152,16 @@ def _possible_targets(cols: list[ColumnProfile]) -> list[str]:
     return out
 
 
-def profile_dataframe(df: pd.DataFrame, thresholds: QualityThresholds = DEFAULT_THRESHOLDS) -> DatasetProfile:
-    """Profile a DataFrame without modifying it."""
+def profile_dataframe(df: pd.DataFrame, thresholds: QualityThresholds = DEFAULT_THRESHOLDS,
+                      progress: ProgressFn | None = None) -> DatasetProfile:
+    """Profile a DataFrame without modifying it. `progress` is told after every column (core.progress)."""
     if df is None or df.shape[0] == 0 or df.shape[1] == 0:
         raise DataValidationError("Cannot profile an empty dataset.")
     try:
-        cols = [profile_column(df[c], thresholds) for c in df.columns]
+        cols = []
+        for i, c in enumerate(df.columns):
+            notify(progress, i, df.shape[1], f"Profiling columns, {i + 1} of {df.shape[1]}")
+            cols.append(profile_column(df[c], thresholds))
         dup = int(df.duplicated().sum())
         cells = df.shape[0] * df.shape[1]
         missing = int(df.isna().sum().sum())

@@ -29,3 +29,31 @@ class InsufficientDataError(BIError):
 
 class ProfilingError(BIError):
     """Profiling failed unexpectedly."""
+
+
+class CleaningError(BIError):
+    """A cleaning action is malformed or cannot be applied."""
+
+
+class ModelTrainingError(BIError):
+    """The optional semantic name model could not be trained or evaluated."""
+
+
+class ForecastingError(BIError):
+    """A forecast request is invalid or the forecasting module failed."""
+
+
+class AnomalyDetectionError(BIError):
+    """An anomaly-detection request is invalid or the module failed."""
+
+
+class SegmentationError(BIError):
+    """A segmentation request is invalid or the module failed."""
+
+
+class DriverAnalysisError(BIError):
+    """A driver-analysis request is invalid or the module failed."""
+
+
+class ReportGenerationError(BIError):
+    """A report or export could not be generated."""
