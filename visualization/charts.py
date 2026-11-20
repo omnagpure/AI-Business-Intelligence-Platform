@@ -13,6 +13,8 @@ from analytics.descriptive import OTHER_LABEL, numeric_series, top_n_with_other
 
 PALETTE = ["#D9541E", "#2F6FDB", "#2F9E6B", "#8257D8", "#C9962B", "#5B6B7D", "#C2477A", "#2A9BB5", "#7C8B3A", "#9C6B4E"]
 MUTED = "#8C887F"      # mid grey that reads on both light and dark backgrounds
+WARN = "#C9962B"       # amber marker (data changes shape)
+DANGER = "#D64545"     # unusually low
 # Light defaults; apply_theme() restyles a figure for the appearance it is shown in.
 TEXT, GRID = "#1C1B19", "#E8E5DF"
 _THEMES = {
@@ -277,44 +279,90 @@ def heatmap(matrix: pd.DataFrame, title: str, max_columns: int = MAX_HEATMAP_COL
 
 
 def forecast_chart(history: pd.DataFrame, forecast: pd.DataFrame, title: str, y_title: str = "",
-                   backtest: pd.DataFrame | None = None, interval_label: str = "Prediction interval"):
+                   backtest: pd.DataFrame | None = None, interval_label: str = "Prediction interval",
+                   shift_at: pd.Timestamp | None = None, percent: bool = False):
     """History, out-of-sample validation predictions and a forecast with its interval.
 
     history: period, value. forecast: period, forecast, lower, upper. backtest: period, predicted.
+    The forecast is joined to the last actual value so the two lines read as one; a dashed line marks where the
+    forecast starts, and `shift_at` marks where the data changed shape.
     """
     import plotly.graph_objects as go
     h = history.dropna(subset=["period"])
     f = forecast.dropna(subset=["period"])
     if h["value"].notna().sum() == 0 or f.empty:
         return None
+    last = h.iloc[-1]
+    fx = [last["period"], *f["period"]]
+    suffix = "%" if percent else ""
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=f["period"], y=f["upper"], mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=f["period"], y=f["lower"], mode="lines", line=dict(width=0), fill="tonexty",
-                             fillcolor="rgba(217,84,30,0.14)", name=interval_label, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=h["period"], y=h["value"], mode="lines", name="History", line=dict(color=PALETTE[1], width=2)))
+    fig.add_trace(go.Scatter(x=fx, y=[last["value"], *f["upper"]], mode="lines", line=dict(width=0), showlegend=False,
+                             hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=fx, y=[last["value"], *f["lower"]], mode="lines", line=dict(width=0), fill="tonexty",
+                             fillcolor="rgba(217,84,30,0.16)", name=interval_label, hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=h["period"], y=h["value"], mode="lines", name="Actual", line=dict(color=PALETTE[1], width=2),
+                             hovertemplate="%{x|%d %b %Y}: %{y:,.2f}" + suffix + "<extra>Actual</extra>"))
     if backtest is not None and len(backtest):
-        fig.add_trace(go.Scatter(x=backtest["period"], y=backtest["predicted"], mode="lines", name="Validation predictions",
-                                 line=dict(color=PALETTE[2], width=1.5, dash="dot")))
-    fig.add_trace(go.Scatter(x=f["period"], y=f["forecast"], mode="lines+markers", name="Forecast",
-                             line=dict(color=PALETTE[0], width=2.5), marker=dict(size=5)))
-    return _style(fig, title, "", y_title, height=420)
+        for i, (_, part) in enumerate(backtest.groupby("fold") if "fold" in backtest else [(0, backtest)]):
+            fig.add_trace(go.Scatter(x=part["period"], y=part["predicted"], mode="lines", name="Validation predictions",
+                                     legendgroup="bt", showlegend=i == 0, line=dict(color=MUTED, width=1.5, dash="dot"),
+                                     hovertemplate="%{x|%d %b %Y}: %{y:,.2f}" + suffix + "<extra>Validation</extra>"))
+    fig.add_trace(go.Scatter(x=fx, y=[last["value"], *f["forecast"]], mode="lines+markers", name="Forecast",
+                             line=dict(color=PALETTE[0], width=2.5), marker=dict(size=[0] + [6] * len(f)),
+                             customdata=[[last["value"], last["value"]]] + f[["lower", "upper"]].to_numpy().tolist(),
+                             hovertemplate="%{x|%d %b %Y}: %{y:,.2f}" + suffix + " (range %{customdata[0]:,.2f} – "
+                                           "%{customdata[1]:,.2f})<extra>Forecast</extra>"))
+    fig.add_vline(x=last["period"], line=dict(color=MUTED, width=1, dash="dash"))
+    fig.add_annotation(x=last["period"], y=1.0, yref="paper", yanchor="bottom", xanchor="left", showarrow=False,
+                       text=" Forecast", font=dict(color=MUTED, size=11))
+    if shift_at is not None and h["period"].min() < shift_at <= last["period"]:
+        fig.add_vline(x=shift_at, line=dict(color=WARN, width=1, dash="dot"))
+        fig.add_annotation(x=shift_at, y=1.0, yref="paper", yanchor="bottom", xanchor="right", showarrow=False,
+                           text="Data changes ", font=dict(color=WARN, size=11))
+    _style(fig, title, "", y_title, height=430)
+    if percent:
+        fig.update_yaxes(ticksuffix="%")
+    return fig
 
 
-def anomaly_series_chart(series: pd.DataFrame, title: str, y_title: str = ""):
-    """Series with its baseline and the flagged periods marked. series: period, value, baseline, flagged."""
+def anomaly_series_chart(series: pd.DataFrame, title: str, y_title: str = "", percent: bool = False,
+                         shift_at: pd.Timestamp | None = None):
+    """Series with its expected range (band), the baseline and flagged periods marked above or below.
+    series: period, value, baseline, flagged, and optionally lower/upper for the band."""
     import plotly.graph_objects as go
     s = series.dropna(subset=["period"])
     if s["value"].notna().sum() == 0:
         return None
+    suffix = "%" if percent else ""
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=s["period"], y=s["baseline"], mode="lines", name="Expected (baseline)",
-                             line=dict(color=PALETTE[6], width=1.5, dash="dot")))
-    fig.add_trace(go.Scatter(x=s["period"], y=s["value"], mode="lines", name="Value", line=dict(color=PALETTE[1], width=2)))
+    if {"lower", "upper"} <= set(s.columns):
+        fig.add_trace(go.Scatter(x=s["period"], y=s["upper"], mode="lines", line=dict(width=0), showlegend=False,
+                                 hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=s["period"], y=s["lower"], mode="lines", line=dict(width=0), fill="tonexty",
+                                 fillcolor="rgba(140,136,127,0.16)", name="Expected range", hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=s["period"], y=s["baseline"], mode="lines", name="Expected",
+                             line=dict(color=MUTED, width=1.2, dash="dot"),
+                             hovertemplate="%{x|%d %b %Y}: %{y:,.2f}" + suffix + "<extra>Expected</extra>"))
+    fig.add_trace(go.Scatter(x=s["period"], y=s["value"], mode="lines", name="Actual", line=dict(color=PALETTE[1], width=2),
+                             hovertemplate="%{x|%d %b %Y}: %{y:,.2f}" + suffix + "<extra>Actual</extra>"))
     f = s[s["flagged"].astype(bool)]
     if len(f):
-        fig.add_trace(go.Scatter(x=f["period"], y=f["value"], mode="markers", name="Flagged",
-                                 marker=dict(color=PALETTE[3], size=10, symbol="circle-open", line=dict(width=2))))
-    return _style(fig, title, "", y_title, height=400)
+        up = f[f["value"] >= f["baseline"]]
+        down = f[f["value"] < f["baseline"]]
+        for part, name, color, sym in ((up, "Unusually high", PALETTE[0], "triangle-up"),
+                                       (down, "Unusually low", DANGER, "triangle-down")):
+            if len(part):
+                fig.add_trace(go.Scatter(x=part["period"], y=part["value"], mode="markers", name=name,
+                                         marker=dict(color=color, size=12, symbol=sym, line=dict(width=1, color="white")),
+                                         hovertemplate="%{x|%d %b %Y}: %{y:,.2f}" + suffix + "<extra>" + name + "</extra>"))
+    if shift_at is not None and s["period"].min() < shift_at <= s["period"].max():
+        fig.add_vline(x=shift_at, line=dict(color=WARN, width=1, dash="dot"))
+        fig.add_annotation(x=shift_at, y=1.0, yref="paper", yanchor="bottom", xanchor="right", showarrow=False,
+                           text="Data changes ", font=dict(color=WARN, size=11))
+    _style(fig, title, "", y_title, height=420)
+    if percent:
+        fig.update_yaxes(ticksuffix="%")
+    return fig
 
 
 def segment_scatter(df: pd.DataFrame, x: str, y: str, cluster: str, title: str, x_title: str = "", y_title: str = ""):

@@ -10,7 +10,7 @@ from html import escape
 
 import streamlit as st
 
-from analytics.anomaly_detection import METHODS, eligible_columns
+from analytics.anomaly_detection import METHODS, default_columns, eligible_columns
 from analytics.descriptive import FREQ_LABELS
 from analytics.drivers import available_date_parts, candidate_features, driver_targets
 from analytics.forecasting import DEFAULT_HORIZON, suggest_setup, target_columns
@@ -20,9 +20,9 @@ from core.logging_config import get_logger
 from ui import nav
 from ui.analysis_runner import safe_cached
 from ui.analytics_state import base_key
-from ui.anomaly_page import _safe as _anomaly_safe, _screen
+from ui.anomaly_page import screen as _screen
 from ui.drivers_page import _explain
-from ui.forecasting_page import _ROW_COUNT, _run as _forecast_run
+from ui.forecasting_page import _ROW_COUNT, forecast_for
 from ui.segmentation_page import _cluster
 
 log = get_logger("ui.home_cards")
@@ -56,6 +56,14 @@ def summarise_forecast(r) -> Card:
 
 
 def summarise_anomalies(rep, n_cols: int) -> Card:
+    votes = getattr(rep, "votes", None)
+    if votes is not None and len(votes):
+        ran = max(getattr(rep, "methods_run", 1), 1)
+        need = min(3, ran)
+        n = len(rep.agreed(need))
+        return Card("anomalies", "Anomalies", f"{n:,} record(s) flagged by {need}+ methods",
+                    f"{len(votes):,} flagged by at least one method across {n_cols} column(s). "
+                    "Nothing is changed or removed.")
     n = int(rep.findings["row"].nunique()) if len(rep.findings) else 0
     if n == 0:
         return Card("anomalies", "Anomalies", "Nothing unusual found at balanced sensitivity",
@@ -86,12 +94,10 @@ def _forecast_card(df, profile, model) -> Card:
     targets = [_ROW_COUNT] + target_columns(df, profile, model)
     target = setup["value_col"] if setup["value_col"] in targets else _ROW_COUNT
     date_col = setup["date_col"] if setup["date_col"] in dates else dates[0]
-    value_col = None if target == _ROW_COUNT else target
-    agg = "count" if target == _ROW_COUNT else "sum"
     order = ["D", "W", "M"]
     status = payload = None
     for freq in order[order.index(setup["freq"]):]:      # sparse data: try a coarser period before giving up
-        status, payload = _forecast_run(df, date_col, value_col, freq, agg, DEFAULT_HORIZON[freq], None)
+        (status, payload), _ = forecast_for(df, profile, model, target, date_col, freq, DEFAULT_HORIZON[freq])
         if status != "insufficient":
             break
     if status != "ok":
@@ -105,9 +111,8 @@ def _anomaly_card(df, profile, model) -> Card:
     if not cols:
         return Card("anomalies", "Anomalies", "Skipped: no suitable numeric columns",
                     "Screening needs measure columns with enough distinct values.", True)
-    chosen, sens = tuple(cols[:6]), DEFAULT_ANALYTICS.anomaly_sensitivity
-    p = (base_key(), chosen, tuple(METHODS), sens)
-    status, rep = _anomaly_safe("anomaly_values", p[1:], lambda: _screen(df, p))
+    chosen, sens = tuple(default_columns(df, cols)), DEFAULT_ANALYTICS.anomaly_sensitivity
+    status, rep = _screen(df, chosen, METHODS, sens)
     if status != "ok":
         return Card("anomalies", "Anomalies", "Skipped: detection not possible" if status == "insufficient" else "Could not be completed", rep, True)
     return summarise_anomalies(rep, len(chosen))

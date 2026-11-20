@@ -191,4 +191,8 @@ def test_anomaly_chart_builds_when_plotly_is_installed():
     from visualization import charts
     res = ad.series_anomalies(_daily_sales(), "date", "units", "D", "sum", 3)
     fig = charts.anomaly_series_chart(res.series, "t", "y")
-    assert fig is not None and len(fig.data) == 3
+    names = {t.name for t in fig.data}
+    assert fig is not None and {"Expected range", "Expected", "Actual"} <= names
+    assert names & {"Unusually high", "Unusually low"}                                  # the planted spike is marked
+    s = res.series
+    assert ((s["value"] < s["lower"]) | (s["value"] > s["upper"])).eq(s["flagged"]).all()   # band = flag rule

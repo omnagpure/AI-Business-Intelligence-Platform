@@ -28,18 +28,22 @@ def _run(days):
     return at.run()
 
 
-def test_page_runs_a_forecast_and_shows_real_numbers():
+def _html(at) -> str:
+    return " ".join(str(getattr(h, "body", "")) for h in at.get("html")) + " ".join(m.value for m in at.markdown)
+
+
+def test_page_forecasts_on_open_and_shows_real_numbers():
     at = _run(200)
     assert not at.exception
-    next(b for b in at.button if b.key == "fc_run").click().run()
-    assert not at.exception
-    m = {x.label: x.value for x in at.metric}
-    assert {"Selected model", "Validation MAE", "Baseline MAE"} <= set(m)
-    assert [t.label for t in at.tabs] == ["Model comparison", "Forecast values", "Method and limitations"]
+    text = _html(at)
+    assert "is forecast at" in text and "Typical error in testing" in text and "Next day" in text
+    assert [t.label for t in at.tabs] == ["Forecast values", "Model comparison", "How this forecast was made"]
+    values = at.dataframe[0].value
+    assert list(values.columns) == ["Period", "Forecast", "Low", "High"] and len(values) == 14
+    assert (values["Low"] <= values["Forecast"]).all() and (values["Forecast"] <= values["High"]).all()
 
 
 def test_page_explains_when_data_is_too_short():
     at = _run(20)
-    next(b for b in at.button if b.key == "fc_run").click().run()
-    assert not at.exception and not at.metric
+    assert not at.exception and not at.dataframe
     assert any("at least" in m.value for m in at.markdown)

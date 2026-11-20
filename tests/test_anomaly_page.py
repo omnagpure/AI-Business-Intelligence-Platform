@@ -20,11 +20,12 @@ def _page() -> None:
     render_anomaly_page()
 
 
-def test_page_screens_values_and_periods():
+def test_page_screens_records_and_periods_on_open():
     at = AppTest.from_function(_page, default_timeout=120).run()
     assert not at.exception
-    run = {b.key: b for b in at.button}
-    run["an_run"].click().run()
-    assert not at.exception and any("flagged value" in m.value for m in at.markdown)
-    {b.key: b for b in at.button}["ap_run"].click().run()
-    assert not at.exception and any("unusual" in m.value for m in at.markdown)
+    text = " ".join(m.value for m in at.markdown) + " ".join(str(getattr(h, "body", "")) for h in at.get("html"))
+    assert "records" in text and "High agreement" in text
+    # the planted spike (day 121) is flagged as an unusual period
+    assert "fall outside the expected range" in text
+    periods = at.dataframe[-1].value
+    assert str(periods.iloc[0]["Period"]) == "2024-04-30" and periods.iloc[0]["Direction"] == "High"

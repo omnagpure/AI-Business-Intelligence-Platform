@@ -262,10 +262,12 @@ def _future_periods(last: pd.Timestamp, freq: str, h: int) -> pd.DatetimeIndex:
 # ---- main entry point --------------------------------------------------------------------------
 def forecast_series(df: pd.DataFrame, date_col: str, value_col: str | None, freq: str = "D", agg: str = "sum",
                     horizon: int | None = None, config: AnalyticsConfig = DEFAULT_ANALYTICS,
-                    model: str | None = None, progress: ProgressFn | None = None) -> ForecastResult:
+                    model: str | None = None, progress: ProgressFn | None = None,
+                    bounds: tuple[float, float] | None = None) -> ForecastResult:
     """Validate several models chronologically and forecast with the selected one.
 
     `model` forces one of the candidate models (its validation scores are still reported); None selects automatically.
+    `bounds` keeps the forecast and its interval inside a valid range (0 to 100 for a rate).
     Raises InsufficientDataError (user-safe reason) when the data cannot support a forecast.
     """
     if freq not in SEASONAL_PERIOD:
@@ -360,10 +362,13 @@ def forecast_series(df: pd.DataFrame, date_col: str, value_col: str | None, freq
     upper = point + max(qhi, 0.0) * widen
     if agg in ("sum", "count") and float(np.min(y)) >= 0:
         point, lower, upper = np.maximum(point, 0), np.maximum(lower, 0), np.maximum(upper, 0)
+    if bounds is not None:
+        lo_b, hi_b = bounds
+        point, lower, upper = (np.clip(a, lo_b, hi_b) for a in (point, lower, upper))
     if float(np.ptp(point)) <= 1e-9 * max(1.0, abs(float(np.mean(point)))):
         notes.append(f"The forecast is a flat line. {used.label} predicts a constant level because no trend or repeating "
                      "pattern was reliable enough to beat it in validation. That is a genuine result, not a failure: the band shows "
-                     "the expected range. A different period (for example week) or target may show more structure.")
+                     "the expected range. A different period or target may show more structure.")
     future = _future_periods(pd.Timestamp(table["period"].iloc[-1]), freq, horizon)
     forecast = pd.DataFrame({"period": future, "forecast": point, "lower": lower, "upper": upper})
 
@@ -384,3 +389,48 @@ def forecast_series(df: pd.DataFrame, date_col: str, value_col: str | None, freq
         notes.append("The selected model does not beat the baseline; the forecast is no better than repeating the past.")
     return ForecastResult(date_col, value_col, agg, freq, horizon, table, forecast, bt, tuple(scores), used.key,
                           baseline.key, improvement, level, m, seasonal, hv, k, tuple(notes), tuple(limits))
+
+
+# ---- plain-language summary --------------------------------------------------------------------
+@dataclass(frozen=True)
+class ForecastSummary:
+    next_period: pd.Timestamp
+    next_value: float
+    next_lower: float
+    next_upper: float
+    horizon_total: float | None          # sum over the horizon (sum/count targets only)
+    previous_total: float | None         # the same number of periods just before the forecast
+    change_pct: float | None             # horizon vs previous periods: totals, or averages for mean targets
+    horizon_mean: float
+    previous_mean: float
+    typical_error_pct: float | None      # validation MAE as % of the average level in the validated periods
+    beats_baseline: bool
+    trend: str                           # "up" | "down" | "flat"
+
+
+def summarise_forecast(r: ForecastResult) -> ForecastSummary:
+    """Numbers a reader needs first: the next period, the horizon against the same span just before it, and how far
+    off the model was in validation relative to the level of the series."""
+    f, h = r.forecast, r.history
+    n = min(r.horizon, len(h))
+    prev = h["value"].iloc[-n:]
+    fut = f["forecast"]
+    additive = r.agg in ("sum", "count")
+    total, prev_total = (float(fut.sum()), float(prev.sum())) if additive else (None, None)
+    hm, pm = float(fut.mean()), float(prev.mean())
+    if additive:
+        base, new = prev_total, total
+        if n < r.horizon:                    # compare like with like when the history is shorter than the horizon
+            base, new = pm, float(fut.iloc[:n].mean())
+    else:
+        base, new = pm, hm
+    change = (new - base) / abs(base) * 100 if base else None
+    chosen = next(s for s in r.scores if s.key == r.chosen)
+    level = float(np.mean(np.abs(r.backtest["actual"]))) if len(r.backtest) else float(np.mean(np.abs(h["value"])))
+    err = chosen.mae / level * 100 if chosen.mae is not None and level > 0 else None
+    beats = r.improvement_vs_baseline_pct is not None and r.improvement_vs_baseline_pct > 0 and r.chosen != r.baseline
+    span = float(fut.iloc[-1] - fut.iloc[0])
+    scale = max(abs(hm), 1e-9)
+    trend = "flat" if abs(span) / scale < 0.01 else ("up" if span > 0 else "down")
+    return ForecastSummary(pd.Timestamp(f["period"].iloc[0]), float(fut.iloc[0]), float(f["lower"].iloc[0]),
+                           float(f["upper"].iloc[0]), total, prev_total, change, hm, pm, err, beats, trend)

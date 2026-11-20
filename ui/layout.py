@@ -86,8 +86,14 @@ div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid
 .dash-sec-t {font-size:.75rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text);}
 .dash-sec-note {font-size:.78rem; color:var(--faint);}
 .dash-callout {border:1px solid var(--warn); border-left-width:3px; background:var(--warn-soft); border-radius:var(--r);
-  padding:.7rem .95rem; font-size:.84rem; line-height:1.5; color:var(--text); margin:.6rem 0 .2rem;}
+  padding:.7rem .95rem; font-size:.84rem; line-height:1.5; color:var(--text); margin:.6rem 0 .9rem;}
 .dash-callout-t {font-weight:600; color:var(--warn); margin-right:.5rem;}
+.dash-callout.info {border-color:var(--line-2); background:var(--surface-2);}
+.dash-callout.info .dash-callout-t {color:var(--text);}
+.dash-lede {font-size:1.05rem; line-height:1.55; color:var(--text); margin:.2rem 0 .9rem; max-width:62rem;}
+.kpi.compact {min-height:0;}
+.kpi.compact .kpi-foot {margin-top:auto;}
+.kpi.compact .kpi-delta {margin-bottom:.35rem;}
 
 /* KPI cards: value, change chip, sparkline, footnote */
 .kpi-grid {display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.85rem;}
@@ -288,3 +294,44 @@ _MD_SPECIAL = set("\\`*_{}[]()#+-.!<>|~:$")
 def md_escape(text: str) -> str:
     """Escape user-supplied text (file names, titles) for st.markdown, so it renders literally."""
     return "".join("\\" + ch if ch in _MD_SPECIAL else ch for ch in str(text))
+
+
+# ---- analysis-page building blocks (dashboard, forecasting, anomalies) ----------------------------
+def section(title: str, note: str = "") -> None:
+    """Small uppercase section heading with an optional faint note."""
+    extra = f'<span class="dash-sec-note">{escape(note)}</span>' if note else ""
+    st.markdown(f'<div class="dash-sec"><span class="dash-sec-t">{escape(title)}</span>{extra}</div>', unsafe_allow_html=True)
+
+
+def callout(title: str, text: str, tone: str = "warn") -> None:
+    """Highlighted note. tone: warn | info."""
+    st.markdown(f'<div class="dash-callout {tone}"><span class="dash-callout-t">{escape(title)}</span>{escape(text)}</div>',
+                unsafe_allow_html=True)
+
+
+def lede(text: str) -> None:
+    """The one-sentence answer at the top of a result, in larger type."""
+    st.markdown(f'<div class="dash-lede">{escape(text)}</div>', unsafe_allow_html=True)
+
+
+def meta_line(parts: list[str], tags_html: str = "") -> None:
+    """File · rows · coverage line under a page title. `parts` are plain text; `tags_html` is trusted badge HTML."""
+    sep = '<span class="dash-sep">·</span>'
+    st.markdown(f'<div class="dash-meta">{sep.join(f"<span>{escape(p)}</span>" for p in parts if p)} {tags_html}</div>',
+                unsafe_allow_html=True)
+
+
+def stat_cards(cards: list[dict]) -> None:
+    """Uniform result cards in the KPI-card style. Each card: label, value, and optionally chip=(text, tone) with tone
+    good | bad | flat, sub (text beside the chip) and foot (small text at the bottom)."""
+    html = []
+    for c in cards:
+        chip = ""
+        if c.get("chip") or c.get("sub"):
+            text, tone = c.get("chip") or ("", "flat")
+            chip_html = f'<span class="chip {escape(tone)}">{escape(text)}</span>' if text else ""
+            chip = f'<div class="kpi-delta">{chip_html}<span class="kpi-vs">{escape(c.get("sub", ""))}</span></div>'
+        foot = f'<div class="kpi-foot">{escape(c["foot"])}</div>' if c.get("foot") else ""
+        html.append(f'<div class="kpi compact" title="{escape(c.get("tip", ""))}"><div class="kpi-label">{escape(c["label"])}</div>'
+                    f'<div class="kpi-value">{escape(c["value"])}</div>{chip}{foot}</div>')
+    st.html('<div class="kpi-grid">' + "".join(html) + "</div>")

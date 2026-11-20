@@ -3,7 +3,7 @@
 Each function raises InsufficientDataError (user-safe reason) when the data cannot support the analysis."""
 from __future__ import annotations
 
-from analytics.anomaly_detection import eligible_columns, run_anomaly_detection
+from analytics.anomaly_detection import default_columns, eligible_columns, run_anomaly_detection
 from analytics.drivers import driver_targets, run_driver_analysis
 from analytics.forecasting import forecast_series, suggest_setup
 from analytics.kpis import primary_column
@@ -28,7 +28,8 @@ def default_anomalies(df, profile, model, config: AnalyticsConfig = DEFAULT_ANAL
     cols = result[0] if isinstance(result, tuple) else result
     if not cols:
         raise InsufficientDataError("No numeric column is suitable for anomaly screening.")
-    return run_anomaly_detection(df, list(cols)[:MAX_ANOMALY_COLUMNS], ("mad", "iqr", "zscore"), None, config, progress)
+    return run_anomaly_detection(df, default_columns(df, list(cols), MAX_ANOMALY_COLUMNS), ("mad", "iqr", "zscore"), None,
+                                 config, progress)
 
 
 def default_segmentation(df, model, config: AnalyticsConfig = DEFAULT_ANALYTICS, progress: ProgressFn | None = None):

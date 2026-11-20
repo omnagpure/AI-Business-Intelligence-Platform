@@ -41,6 +41,14 @@
 - Supplier concentration and stock levels are shown without a good or bad colour, since the right level depends on the
   business.
 
+## Forecasting and anomalies
+- Forecast ranges hold for each period on its own; there is no range for the horizon total.
+- KPI targets count an order in the period of its first row; an order whose lines span periods counts once.
+- Method agreement treats the methods as separate opinions, but they are related (robust z-score and IQR often agree on
+  the same long tail), so "3 of 4 methods" is a ranking, not a probability.
+- A very steady series (such as a monthly on-time rate) can show statistically unusual periods whose difference is
+  small in business terms; the page reports the size so it can be judged.
+
 ## Accounts and authentication
 - No email service: there is no self-service password reset or email verification. Administrators reset passwords
   with `python -m scripts.reset_password`.

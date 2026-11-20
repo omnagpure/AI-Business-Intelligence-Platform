@@ -170,7 +170,10 @@ def test_forecast_chart_builds_when_plotly_is_installed():
     from visualization import charts
     r = fc.forecast_series(_daily(_weekly_pattern()), "date", "units_sold", "D", "sum", 7)
     fig = charts.forecast_chart(r.history, r.forecast, "t", "y", r.backtest)
-    assert fig is not None and len(fig.data) == 5
+    names = {t.name for t in fig.data}
+    assert fig is not None and {"Actual", "Forecast", "Validation predictions", "Prediction interval"} <= names
+    fc_trace = next(t for t in fig.data if t.name == "Forecast")
+    assert fc_trace.x[0] == r.history["period"].iloc[-1] and len(fc_trace.x) == len(r.forecast) + 1   # joined to the last actual
     assert charts.forecast_chart(r.history, r.forecast.iloc[0:0], "t") is None
 
 

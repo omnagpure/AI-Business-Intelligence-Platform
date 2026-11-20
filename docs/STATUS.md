@@ -320,6 +320,30 @@ model 72%, rules 97%). The model is therefore used automatically only where it h
 - **Tests:** `tests/test_dashboard_numbers.py` (9); the stock-vs-reorder view test now checks that one item above its
   reorder point cannot hide another below it.
 
+## Phase 9, Batch 5: forecasting and anomaly pages
+- **KPI targets** (`analytics/derived_targets.py`): orders (distinct, not lines), on-time rate, average delay, shipping or
+  lead time and cancelled rate can be forecast and checked per period like columns. The per-period values use the KPI
+  engine's own definitions (DataCo Dec 2017 on-time: 42.294% both ways). Supply-chain measures only on supply-chain data.
+- **Forecasting:** runs on open and on every setting change (cached). One-sentence answer, then four cards: next period
+  with its 80% range, the horizon against the same span just before it (pts for rates), typical validation error as a
+  share of the level (Reliable under 10%, Rough guide over 25%) and the model against the naive baseline
+  (`summarise_forecast`). Rates are kept inside 0-100 (`bounds`). The chart joins the forecast to the last actual, marks
+  where the forecast starts, draws each validation window, and marks a data change. Forecast tables are rounded.
+- **Data changes:** `data_shifts` now searches about 8 months back whatever the period (it only looked 8 periods back,
+  so weekly and daily data missed DataCo's Oct 2017 change) and requires the change to last 2 months / 4 weeks / 21 days.
+  Forecasts that cross a change say how many periods come after it.
+- **Unusual records:** every flag is counted per record before the display cap (`AnomalyReport.votes`, `agreed`,
+  `column_votes`, `methods_run`), so the headline is records flagged by 3+ methods (DataCo 3,606 of 180,519, 2.0%)
+  instead of a mix of 5,977 capped findings. Default columns go by role (money, volumes, times) and skip copies of a
+  column already chosen (`default_columns`; also used by Insights and the Home card). The review table shows each
+  record's most unusual value against the typical one; long-tail notes are combined into one.
+- **Unusual periods:** the expected range is drawn as a band (it equals the flag rule exactly), high and low flags are
+  marked separately, a flag in the month of a data change is labelled as such, and the summary gives the size of the
+  differences (DataCo monthly on-time: 7 of 37 months, 1.1 to 1.9 pts, called out as small).
+- Shared page blocks in `ui/layout.py` (`section`, `callout`, `lede`, `meta_line`, `stat_cards`); light and dark themes.
+- **Tests:** `tests/test_forecast_anomaly_numbers.py` (8); page tests now check the shown numbers instead of clicking
+  Run; two chart tests check trace names instead of counts.
+
 ## Phase 9, Batch 2: performance, report options, progress bars
 **Excel export was deliberately removed** (module, button, tests, documentation). Reports are PDF and HTML only. `openpyxl` stays in
 `requirements.txt` because it reads uploaded .xlsx files.

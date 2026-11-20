@@ -28,6 +28,8 @@ _IQR_K = {1: 3.0, 2: 2.2, 3: 1.5, 4: 1.2, 5: 1.0}
 _Z = {1: 4.0, 2: 3.5, 3: 3.0, 4: 2.5, 5: 2.0}
 _CONTAM = {1: 0.005, 2: 0.01, 3: 0.02, 4: 0.05, 5: 0.10}
 FINDING_COLUMNS = ["row", "method", "feature", "value", "score", "threshold", "direction", "explanation"]
+# Columns screened first when the user has not chosen: money, volumes and times say most about the business.
+ROLE_PRIORITY = ("revenue", "quantity", "duration", "cost", "profit", "price", "balance", "percentage")
 
 
 @dataclass(frozen=True)
@@ -37,11 +39,20 @@ class AnomalyReport:
     sensitivity: int
     warnings: tuple[str, ...] = field(default_factory=tuple)
     note: str = NOTE
+    votes: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=["row", "methods", "checks", "features"]))
+    examined_rows: int = 0
+    column_votes: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=["feature", "flagged", "agreed"]))
+    methods_run: int = 0                  # methods that ran on at least one column (skipped ones do not count)
+
+    def agreed(self, min_methods: int = 2) -> pd.DataFrame:
+        """Records flagged by at least `min_methods` different methods, most agreement first (exact, not capped)."""
+        v = self.votes
+        return v[v["methods"] >= min_methods].reset_index(drop=True) if len(v) else v
 
 
 @dataclass(frozen=True)
 class SeriesAnomalyResult:
-    series: pd.DataFrame              # period, value, baseline, score, flagged
+    series: pd.DataFrame              # period, value, baseline, lower, upper, score, flagged
     findings: pd.DataFrame            # FINDING_COLUMNS for flagged periods ("row" is the period start)
     freq: str
     threshold: float
@@ -80,6 +91,9 @@ def eligible_columns(df: pd.DataFrame, profile, model=None,
             skipped[c.name] = f"only {x.nunique()} distinct values (flag or code, not a measure)"
         else:
             ok.append(c.name)
+    if model is not None:
+        rank = {r: i for i, r in enumerate(ROLE_PRIORITY)}
+        ok.sort(key=lambda c: rank.get(model.role_of(c) if c in model.columns else "", len(rank)))
     return ok, skipped
 
 
@@ -136,8 +150,10 @@ def _top(mask: np.ndarray, score: np.ndarray, cap: int) -> tuple[np.ndarray, int
     return pos[np.argsort(-score[pos], kind="stable")][:cap], len(pos)
 
 
-def _univariate(col: str, s: pd.Series, method: str, sensitivity: int, cap: int = 500) -> tuple[list[dict], dict]:
-    """Return (findings, summary row) for one column and one rule. Never raises for data reasons."""
+def _univariate(col: str, s: pd.Series, method: str, sensitivity: int, cap: int = 500,
+                all_rows: list | None = None) -> tuple[list[dict], dict]:
+    """Return (findings, summary row) for one column and one rule. Never raises for data reasons.
+    When `all_rows` is given, the labels of every flagged row (not only the `cap` strongest) are appended to it."""
     x_all = numeric_series(s).dropna()
     x = x_all.to_numpy(dtype="float64")
     row = {"method": method, "feature": col, "examined": len(x), "flagged": 0, "share": 0.0, "threshold": None,
@@ -150,7 +166,8 @@ def _univariate(col: str, s: pd.Series, method: str, sensitivity: int, cap: int 
         if res is None:
             return [], {**row, "status": "skipped", "note": "median absolute deviation is 0 (too many identical values)"}
         z, med, _ = res
-        top, n_flag = _top(np.abs(z) > thr, np.abs(z), cap)
+        mask = np.abs(z) > thr
+        top, n_flag = _top(mask, np.abs(z), cap)
         for i in top:
             idx = x_all.index[i]
             side = "above" if z[i] > 0 else "below"
@@ -182,7 +199,8 @@ def _univariate(col: str, s: pd.Series, method: str, sensitivity: int, cap: int 
         if not ok:
             return [], {**row, "status": "skipped", "note": f"z-score not used: {why}"}
         z = (x - x.mean()) / x.std()
-        top, n_flag = _top(np.abs(z) > thr, np.abs(z), cap)
+        mask = np.abs(z) > thr
+        top, n_flag = _top(mask, np.abs(z), cap)
         for i in top:
             idx = x_all.index[i]
             rows.append(_finding(idx, method, col, x[i], abs(z[i]), thr, "high" if z[i] > 0 else "low",
@@ -192,6 +210,8 @@ def _univariate(col: str, s: pd.Series, method: str, sensitivity: int, cap: int 
         raise AnomalyDetectionError(f"Unknown method: {method}")
     row["flagged"] = n_flag
     row["share"] = n_flag / len(x) if len(x) else 0.0
+    if all_rows is not None:
+        all_rows.extend(x_all.index[mask].tolist())
     return rows, row
 
 
@@ -242,7 +262,7 @@ def _isolation_forest(df: pd.DataFrame, features: list[str], sensitivity: int,
         rows.append(_finding(complete.index[i], "isolation_forest", "multiple features", np.nan, score[i], cutoff,
                              "multivariate", text))
     return rows, {**base, "examined": len(complete), "flagged": len(rows), "share": len(rows) / len(complete),
-                  "status": "ok", "note": ""}, notes
+                  "status": "ok", "note": "", "_rows": complete.index[flagged].tolist()}, notes
 
 
 # ---- orchestration -----------------------------------------------------------------------------
@@ -260,6 +280,7 @@ def run_anomaly_detection(df: pd.DataFrame, columns: list[str], methods: tuple[s
     findings: list[dict] = []
     summary: list[dict] = []
     notes: list[str] = []
+    hits: list[tuple] = []                      # (row, method, feature) for every flag, before any cap
     units = sum(1 if m == "isolation_forest" else len(cols) for m in methods)      # one unit = one method on one column
     unit = 0
     for method in methods:
@@ -273,14 +294,17 @@ def run_anomaly_detection(df: pd.DataFrame, columns: list[str], methods: tuple[s
                                "threshold": None, "status": "failed", "note": "could not be run on this data"}, []
             findings += f[:config.anomaly_max_findings] if len(f) <= config.anomaly_max_findings else \
                 sorted(f, key=lambda d: -d["score"])[:config.anomaly_max_findings]
+            hits += [(r, method, "multiple features") for r in s.pop("_rows", [])]
             summary.append(s)
             notes += n
             continue
         for col in cols:
             notify(progress, unit, units, f"Screening {col} ({METHOD_LABELS[method]}), {unit + 1} of {units}")
             unit += 1
+            flagged_rows: list = []
             try:
-                f, s = _univariate(col, df[col], method, sens, config.anomaly_max_findings)
+                f, s = _univariate(col, df[col], method, sens, config.anomaly_max_findings, flagged_rows)
+                hits += [(r, method, col) for r in flagged_rows]
             except Exception:
                 f, s = [], {"method": method, "feature": col, "examined": 0, "flagged": 0, "share": 0.0,
                             "threshold": None, "status": "failed", "note": "could not be run on this column"}
@@ -295,7 +319,59 @@ def run_anomaly_detection(df: pd.DataFrame, columns: list[str], methods: tuple[s
     out = pd.DataFrame(findings, columns=FINDING_COLUMNS)
     if len(out):
         out = out.sort_values(["method", "score"], ascending=[True, False]).reset_index(drop=True)
-    return AnomalyReport(out, pd.DataFrame(summary), sens, tuple(dict.fromkeys(notes)))
+    summ = pd.DataFrame(summary)
+    ran = int(summ.loc[summ["status"] == "ok", "method"].nunique()) if len(summ) else 0
+    return AnomalyReport(out, summ, sens, tuple(dict.fromkeys(notes)), votes=_votes(hits),
+                         examined_rows=int(df[cols].notna().any(axis=1).sum()), column_votes=_column_votes(hits, cols),
+                         methods_run=ran)
+
+
+def _column_votes(hits: list[tuple], cols: list[str]) -> pd.DataFrame:
+    """Per column: records flagged by any single-column method, and by at least two of them (exact counts)."""
+    rows = []
+    h = pd.DataFrame(hits, columns=["row", "method", "feature"]) if hits else pd.DataFrame(columns=["row", "method", "feature"])
+    h = h[h["feature"] != "multiple features"]
+    per = h.groupby(["feature", "row"])["method"].nunique() if len(h) else pd.Series(dtype=float)
+    for c in cols:
+        v = per.loc[c] if len(per) and c in per.index.get_level_values(0) else pd.Series(dtype=float)
+        rows.append({"feature": c, "flagged": int(len(v)), "agreed": int((v >= 2).sum())})
+    return pd.DataFrame(rows, columns=["feature", "flagged", "agreed"])
+
+
+def default_columns(df: pd.DataFrame, cols: list[str], limit: int = 6, sample: int = 5000) -> list[str]:
+    """The first `limit` columns, skipping any that repeats one already chosen (same values, or correlation above
+    0.999 on a sample): screening a copy twice would make one unusual record look flagged twice as often."""
+    chosen: list[str] = []
+    frame = df[cols].head(sample).apply(numeric_series)
+    for c in cols:
+        x = frame[c]
+        dup = False
+        for k in chosen:
+            pair = pd.concat([x, frame[k]], axis=1).dropna()
+            if len(pair) < 10:
+                continue
+            a, b = pair.iloc[:, 0], pair.iloc[:, 1]
+            if a.equals(b) or (a.std() > 0 and b.std() > 0 and abs(float(a.corr(b))) > 0.999):
+                dup = True
+                break
+        if not dup:
+            chosen.append(c)
+        if len(chosen) >= limit:
+            break
+    return chosen
+
+
+def _votes(hits: list[tuple]) -> pd.DataFrame:
+    """One row per flagged record: how many methods and checks flagged it, and in which columns."""
+    if not hits:
+        return pd.DataFrame(columns=["row", "methods", "checks", "features"])
+    h = pd.DataFrame(hits, columns=["row", "method", "feature"])
+
+    def cols(f):
+        named = list(dict.fromkeys(x for x in f if x != "multiple features"))
+        return ", ".join(named) if named else "several columns together"
+    g = h.groupby("row", sort=False).agg(methods=("method", "nunique"), checks=("method", "size"), features=("feature", cols))
+    return g.reset_index().sort_values(["methods", "checks"], ascending=False, kind="stable").reset_index(drop=True)
 
 
 def feature_comparison(df: pd.DataFrame, row, columns: list[str]) -> pd.DataFrame:
@@ -363,7 +439,9 @@ def series_anomalies(df: pd.DataFrame, date_col: str, value_col: str | None, fre
     score = 0.6745 * (resid - med) / mad
     thr = _MAD_Z[sens]
     flagged = score.abs() > thr
+    reach = thr * mad / 0.6745                       # outside baseline + med +/- reach is flagged
     series = pd.DataFrame({"period": table["period"].to_numpy(), "value": y, "baseline": baseline,
+                           "lower": baseline + med - reach, "upper": baseline + med + reach,
                            "score": score, "flagged": flagged})
     rows = []
     for i in np.flatnonzero(flagged.to_numpy()):

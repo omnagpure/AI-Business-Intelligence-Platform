@@ -38,7 +38,7 @@ from semantic.column_lexicon import DOMAIN_LABELS, token_set
 from ui import state
 from ui.analytics_state import cached, show_figure
 from ui.filters import render_filter_bar
-from ui.layout import badge, empty_state, no_dataset_notice, page_title
+from ui.layout import badge, empty_state, no_dataset_notice, page_title, section
 from ui.shared_results import kpi_source
 from visualization import charts
 
@@ -65,9 +65,7 @@ def _safe(section: str, fn) -> None:
         st.warning(f"The {section} section could not be built for this dataset.")
 
 
-def _section(title: str, note: str = "") -> None:
-    extra = f'<span class="dash-sec-note">{escape(note)}</span>' if note else ""
-    st.markdown(f'<div class="dash-sec"><span class="dash-sec-t">{escape(title)}</span>{extra}</div>', unsafe_allow_html=True)
+_section = section
 
 
 # ---- header ---------------------------------------------------------------------------------------
