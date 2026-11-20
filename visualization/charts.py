@@ -365,16 +365,55 @@ def anomaly_series_chart(series: pd.DataFrame, title: str, y_title: str = "", pe
     return fig
 
 
-def segment_scatter(df: pd.DataFrame, x: str, y: str, cluster: str, title: str, x_title: str = "", y_title: str = ""):
-    """One colour per cluster for two entity-level features. Returns None when nothing is plottable."""
+def segment_scatter(df: pd.DataFrame, x: str, y: str, cluster: str, title: str, x_title: str = "", y_title: str = "",
+                    names: dict | None = None, entity: str | None = None, max_points: int = 4000):
+    """One colour per cluster for two entity-level features. Returns None when nothing is plottable.
+    Large tables are thinned to `max_points` (a fixed, evenly spaced sample per cluster) so the chart stays fast;
+    cluster means are drawn as large outlined markers."""
     import plotly.graph_objects as go
-    f = df[[x, y, cluster]].copy()
+    cols = [x, y, cluster] + ([entity] if entity and entity in df.columns and entity not in (x, y, cluster) else [])
+    f = df[cols].copy()
     f[x], f[y] = numeric_series(f[x]), numeric_series(f[y])
-    f = f.replace([np.inf, -np.inf], np.nan).dropna()
+    f = f.replace([np.inf, -np.inf], np.nan).dropna(subset=[x, y, cluster])
     if f.empty:
         return None
+    step = max(1, int(np.ceil(len(f) / max_points)))
     fig = go.Figure()
     for i, (c, g) in enumerate(f.groupby(cluster)):
-        fig.add_trace(go.Scattergl(x=g[x], y=g[y], mode="markers", name=f"Cluster {c}",
-                                   marker=dict(size=7, color=PALETTE[i % len(PALETTE)], opacity=0.8)))
-    return _style(fig, title, x_title or x, y_title or y)
+        label = f"{c}. {names[c]}" if names and c in names else f"Cluster {c}"
+        shown = g.iloc[::step]
+        text = shown[entity].astype(str) if len(cols) == 4 else None
+        fig.add_trace(go.Scattergl(x=shown[x], y=shown[y], mode="markers", name=label, text=text,
+                                   marker=dict(size=6, color=PALETTE[i % len(PALETTE)], opacity=0.55),
+                                   hovertemplate=("%{text}<br>" if text is not None else "") + "%{x:,.2f} · %{y:,.2f}"
+                                                 "<extra>" + label + "</extra>"))
+        fig.add_trace(go.Scatter(x=[g[x].mean()], y=[g[y].mean()], mode="markers", showlegend=False,
+                                 marker=dict(size=16, color=PALETTE[i % len(PALETTE)], symbol="diamond",
+                                             line=dict(width=2, color="white")),
+                                 hovertemplate="Segment average: %{x:,.2f} · %{y:,.2f}<extra>" + label + "</extra>"))
+    _style(fig, title, x_title or x, y_title or y, height=420)
+    if step > 1:
+        fig.add_annotation(x=1, y=1.0, xref="paper", yref="paper", yanchor="bottom", xanchor="right", showarrow=False,
+                           text=f"every {step}th entity shown", font=dict(color=MUTED, size=11))
+    return fig
+
+
+def segment_mix(table: pd.DataFrame, title: str, value_label: str, entity_word: str = "entities"):
+    """Per segment: share of entities next to share of a total (orders, sales). table: label, entities, value (both %)."""
+    import plotly.graph_objects as go
+    if table.empty:
+        return None
+    fig = go.Figure()
+    fig.add_trace(go.Bar(y=table["label"], x=table["entities"], orientation="h", name=f"Share of {entity_word}",
+                         marker_color=MUTED, text=[f"{v:.0f}%" for v in table["entities"]], textposition="outside",
+                         cliponaxis=False, hovertemplate="%{y}: %{x:.1f}% of " + entity_word + "<extra></extra>"))
+    fig.add_trace(go.Bar(y=table["label"], x=table["value"], orientation="h", name=f"Share of {value_label}",
+                         marker_color=PALETTE[0], text=[f"{v:.0f}%" for v in table["value"]], textposition="outside",
+                         cliponaxis=False, hovertemplate="%{y}: %{x:.1f}% of " + value_label + "<extra></extra>"))
+    fig.update_layout(barmode="group", bargap=0.35)
+    fig.update_yaxes(autorange="reversed")
+    _style(fig, title, "", "", height=max(260, 70 * len(table) + 120))
+    hi = float(max(table["entities"].max(), table["value"].max()))
+    fig.update_xaxes(ticksuffix="%", range=[0, hi * 1.2 if hi > 0 else 1])
+    fig.update_layout(margin=dict(l=10, r=28, t=48, b=10))
+    return fig

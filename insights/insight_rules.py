@@ -277,7 +277,7 @@ def rule_segments(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
         if share > cfg.seg_small_share:
             continue
         for f in r.features:
-            if r.units.get(f) == "percent" or f not in prof.columns:
+            if r.units.get(f) in ("percent", "days") or f not in prof.columns:     # rates and times have no "total"
                 continue
             overall, mean = float(r.overall[f]), float(prof.loc[cluster, f])
             if not (math.isfinite(overall) and math.isfinite(mean)) or overall <= 0 or mean / overall < cfg.seg_value_ratio:

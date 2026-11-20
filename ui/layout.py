@@ -92,6 +92,9 @@ div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid
 .dash-callout.info .dash-callout-t {color:var(--text);}
 .dash-lede {font-size:1.05rem; line-height:1.55; color:var(--text); margin:.2rem 0 .9rem; max-width:62rem;}
 .kpi.compact {min-height:0;}
+.kpi.seg .kpi-value {font-size:1.15rem; letter-spacing:-.01em; line-height:1.3; margin:.3rem 0 .45rem;}
+.kpi.seg .kpi-foot {line-height:1.45; font-size:.74rem; color:var(--muted);}
+.seg-dot {display:inline-block; width:.6rem; height:.6rem; border-radius:50%; margin-right:.45rem; vertical-align:baseline;}
 .kpi.compact .kpi-foot {margin-top:auto;}
 .kpi.compact .kpi-delta {margin-bottom:.35rem;}
 

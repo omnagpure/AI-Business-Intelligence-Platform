@@ -320,6 +320,25 @@ model 72%, rules 97%). The model is therefore used automatically only where it h
 - **Tests:** `tests/test_dashboard_numbers.py` (9); the stock-vs-reorder view test now checks that one item above its
   reorder point cannot hide another below it.
 
+## Phase 9, Batch 6: segmentation page
+- `analytics/segmentation.py`:
+  - Entity columns that group the rows the same way (Customer Id / Order Customer Id, Product Card Id / Product Name) are offered once; the name is kept over a numeric id.
+  - The count feature is "Orders" (distinct order ids) when an order spans several rows, else "Rows".
+  - Delay and lead time carry a "days" unit, and lead time uses the shipping-time wording where that fits.
+  - Traits need a clear gap (0.5 standard deviations) and a meaningful one (5% of the overall value, or 2 points for rates), so gaps such as +4% between near-identical warehouses are no longer reported as traits.
+  - New `names` (a short name per segment from its strongest difference, preferring supply-chain measures; "more"/"fewer" for counts).
+  - New `separation` (the share of each measure's variance that lies between the segments).
+- `ui/segmentation_page.py` (rewrite):
+  - Runs on open; setup card (what to group, number of segments, Options for measures and scaling).
+  - Lede sentence with an honest fit rating. It says when the split is weak, when the segments are all close to average, or when they split by size rather than delivery performance.
+  - One card per segment with its name, size and share of value.
+  - Two charts: "how much each measure differs" and "share of entities vs share of value".
+  - Formatted profile table with an "All" row.
+  - Scatter with segment averages; large tables are thinned to about 4,000 points, and the chart says so.
+  - Tabs: entities (with CSV download), choosing the number of segments, and measures used.
+- Home card names the largest segment. The insight rule no longer treats days as a total.
+- Tests: `tests/test_segmentation_numbers.py` (5). `test_segmentation_page.py` was rewritten for auto-run.
+
 ## Phase 9, Batch 5: forecasting and anomaly pages
 - **KPI targets** (`analytics/derived_targets.py`): orders (distinct, not lines), on-time rate, average delay, shipping or
   lead time and cancelled rate can be forecast and checked per period like columns. The per-period values use the KPI

@@ -49,6 +49,12 @@
 - A very steady series (such as a monthly on-time rate) can show statistically unusual periods whose difference is
   small in business terms; the page reports the size so it can be judged.
 
+## Segmentation
+- KMeans on per-entity averages. The fit (silhouette) on real supply-chain files is often weak (0.17 to 0.24), and the page says so. Segments are a convenient grouping, not proof of distinct types.
+- Entities with fewer than 3 rows are left out (8,611 DataCo customers), and missing measures are filled with the median.
+- Segment names come from the single strongest difference; read the card text for the rest.
+- The scatter thins very large tables to about 4,000 points (an evenly spaced sample per segment). The averages use every entity.
+
 ## Accounts and authentication
 - No email service: there is no self-service password reset or email verification. Administrators reset passwords
   with `python -m scripts.reset_password`.

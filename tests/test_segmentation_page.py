@@ -22,10 +22,12 @@ def _page() -> None:
     render_segmentation_page()
 
 
-def test_page_runs_only_on_request_then_shows_clusters():
+def test_page_segments_on_open_and_names_the_groups():
     at = AppTest.from_function(_page, default_timeout=120).run()
     assert not at.exception
-    assert not any("clusters" in m.value for m in at.markdown)                  # nothing runs before the button
-    {b.key: b for b in at.button}["seg_run"].click().run()
-    assert not at.exception
-    assert any("clusters" in m.value and "silhouette" in m.value for m in at.markdown)
+    lead = " ".join(m.value for m in at.markdown)
+    assert "The 14 suppliers fall into 2 segments" in lead and "The split is clear" in lead
+    cards = " ".join(str(h.proto.body) for h in at.get("html"))
+    assert "Lower on-time rate" in cards and "Higher on-time rate" in cards       # named by their real difference
+    profile = at.dataframe[0].value
+    assert list(profile["Segment"])[-1] == "All" and "On-time rate" in profile.columns

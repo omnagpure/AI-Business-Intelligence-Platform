@@ -73,7 +73,15 @@ def summarise_anomalies(rep, n_cols: int) -> Card:
 
 
 def summarise_segments(res, entity: str) -> Card:
-    return Card("segmentation", "Segments", f"Your {entity} values fall into {res.k} groups", res.quality)
+    names = getattr(res, "names", {}) or {}
+    n = len(res.assignments) if hasattr(res, "assignments") else None
+    head = f"{n:,} {entity} values fall into {res.k} segments" if n else f"Your {entity} values fall into {res.k} groups"
+    if names and not all(v == "Close to average" for v in names.values()):
+        biggest = int(res.profile["entities"].idxmax())
+        detail = f"Largest: {names.get(biggest, '')} ({float(res.profile.loc[biggest, 'share']):.0%}). {res.quality}"
+    else:
+        detail = res.quality
+    return Card("segmentation", "Segments", head, detail)
 
 
 def summarise_drivers(res, target: str) -> Card:

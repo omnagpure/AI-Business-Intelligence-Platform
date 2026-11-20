@@ -16,8 +16,9 @@ from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
 from analytics.data_checks import parse_flag
-from analytics.kpis import REORDER_TOKENS, STOCK_TOKENS, UNIT_COST_TOKENS, DataFilter, _Ctx, _revenue, _units
-from analytics.supply_chain_kpis import (DEFECT_WORDS, _closed_rows, _cols, _on_time, _qty_pair, _status, lead_days)
+from analytics.kpis import REORDER_TOKENS, STOCK_TOKENS, UNIT_COST_TOKENS, DataFilter, _Ctx, _order_id, _revenue, _units
+from analytics.supply_chain_kpis import (DEFECT_WORDS, _closed_rows, _cols, _on_time, _qty_pair, _status, lead_days,
+                                          lead_label)
 from config.analytics_config import DEFAULT_ANALYTICS, AnalyticsConfig
 from core.exceptions import InsufficientDataError, SegmentationError
 from core.progress import ProgressFn, notify
@@ -28,6 +29,8 @@ NOTE = ("Clusters are a statistical grouping of similar entities in the chosen f
         "correct, and a different feature set or K can give a different grouping.")
 SCALERS = {"robust": "Robust (median and IQR; less affected by outliers)", "standard": "Standard (mean and standard deviation)"}
 TRAIT_Z = 0.5          # a cluster differs from the overall average by at least this many standard deviations
+TRAIT_MIN_REL = 0.05   # ... and by at least 5% of the overall value (2 points for rates), so tiny gaps are not traits
+TRAIT_MIN_PTS = 2.0
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,9 @@ class SegmentationResult:
     scaler: str
     warnings: tuple[str, ...] = field(default_factory=tuple)
     note: str = NOTE
+    names: dict[int, str] = field(default_factory=dict)          # cluster -> short name ("Lower on-time rate")
+    separation: pd.Series = field(default_factory=lambda: pd.Series(dtype=float))   # feature -> share of its variance
+                                                                                     # explained by the clusters (0-1)
 
 
 # ---- which columns can be entities ------------------------------------------------------------
@@ -76,7 +82,32 @@ def entity_candidates(df: pd.DataFrame, model: SemanticModel, config: AnalyticsC
             avg = len(key) / n
             if avg >= config.seg_min_rows:
                 out.append({"column": name, "role": role, "entities": n, "avg_rows": round(avg, 1)})
-    return sorted(out, key=lambda d: (ENTITY_ROLES.index(d["role"]), -d["entities"]))
+    out = sorted(out, key=lambda d: (ENTITY_ROLES.index(d["role"]), -d["entities"]))
+    return _distinct_groupings(df, out)
+
+
+def _distinct_groupings(df: pd.DataFrame, cands: list[dict]) -> list[dict]:
+    """Keep one column per grouping: 'Customer Id' and 'Order Customer Id', or 'Product Card Id' and 'Product Name',
+    group the rows the same way (one-to-one values), so offering both would only repeat the result. A name (text)
+    is kept over a numeric id because it reads better."""
+    kept: list[dict] = []
+    for c in cands:
+        twin = None
+        for k in kept:
+            if k["entities"] != c["entities"]:
+                continue
+            pair = df[[k["column"], c["column"]]].dropna()
+            if len(pair.drop_duplicates()) == k["entities"]:
+                twin = k
+                break
+        if twin is None:
+            kept.append(dict(c))
+            continue
+        twin.setdefault("same_as", []).append(c["column"])
+        if pd.api.types.is_numeric_dtype(df[twin["column"]]) and not pd.api.types.is_numeric_dtype(df[c["column"]]):
+            twin["same_as"] = [twin["column"]] + [x for x in twin["same_as"] if x != c["column"]]
+            twin["column"] = c["column"]
+    return kept
 
 
 # ---- entity-level features --------------------------------------------------------------------
@@ -111,15 +142,20 @@ def build_entity_features(df: pd.DataFrame, model: SemanticModel, entity: str,
         if len(s):
             feats[k], labels[k], units[k] = s, label, unit
 
-    add("rows", "Rows (orders)", "number", key.dropna().value_counts().astype(float))
+    row_n = key.dropna().value_counts().astype(float)
+    oid = _order_id(ctx)
+    if oid is not None and oid != entity and df[oid].nunique() < len(df):      # several rows per order: count orders
+        add("rows", "Orders", "count", _grouped(key, df[oid], "nunique").astype(float))
+    else:
+        add("rows", "Rows", "count", row_n)
     on, delay, _, _, _, _ = _on_time(ctx)
     if on is not None:
         add("on_time_rate", "On-time rate", "percent", 100 * _grouped(key, on.astype("Float64").astype(float)))
         if delay is not None:
-            add("avg_delay", "Average delay (days)", "number", _grouped(key, delay))
-    d, _, _ = lead_days(ctx)
+            add("avg_delay", "Average delay vs expected", "days", _grouped(key, delay))
+    d, dcols_lead, _ = lead_days(ctx)
     if d is not None and len(d):
-        add("lead_time", "Average lead time (days)", "number", _grouped(key.reindex(d.index), d))
+        add("lead_time", f"Average {lead_label(dcols_lead)}", "days", _grouped(key.reindex(d.index), d))
     ordered, received = _qty_pair(ctx)
     if ordered is not None:
         mask, _ = _closed_rows(ctx, ordered, received)
@@ -155,11 +191,12 @@ def build_entity_features(df: pd.DataFrame, model: SemanticModel, entity: str,
             # levels (stock, reorder point), unit costs and prices are averaged; amounts and counts are summed
             how = "mean" if (role in ("price", "duration", "percentage") or t & (STOCK_TOKENS | REORDER_TOKENS)
                              or (role == "cost" and t & UNIT_COST_TOKENS)) else "sum"
-            add(f"{how}_{c}", f"{'Total' if how == 'sum' else 'Average'} {c}", "number", _grouped(key, ctx.num(c), how))
+            unit = "days" if role == "duration" else "amount" if role in ("cost", "profit", "price") else "number"
+            add(f"{how}_{c}", f"{'Total' if how == 'sum' else 'Average'} {c}", unit, _grouped(key, ctx.num(c), how))
             break
     frame = pd.DataFrame(feats)
     frame.index.name = entity
-    rows = frame["rows"]
+    rows = row_n.reindex(frame.index).fillna(0)
     excluded_entities = int((rows < config.seg_min_rows).sum())
     frame = frame[rows >= config.seg_min_rows]
     warnings: list[str] = []
@@ -192,7 +229,17 @@ def build_entity_features(df: pd.DataFrame, model: SemanticModel, entity: str,
 def _fmt(v: float, unit: str) -> str:
     if unit == "percent":
         return f"{v:.1f}%"
+    if unit == "days":
+        return f"{v:,.1f} days"
     return f"{v:,.0f}" if abs(v) >= 1000 else f"{v:,.2f}".rstrip("0").rstrip(".")
+
+
+def _meaningful(diff: float, overall: float, unit: str) -> bool:
+    """A gap worth calling a trait: 2+ points for a rate, else 5%+ of the overall value (or of 1 day for days)."""
+    if unit == "percent":
+        return abs(diff) >= TRAIT_MIN_PTS
+    base = max(abs(overall), 1.0) if unit == "days" else abs(overall)
+    return base == 0 or abs(diff) >= TRAIT_MIN_REL * base
 
 
 def quality_label(sil: float) -> str:
@@ -203,17 +250,73 @@ def quality_label(sil: float) -> str:
     return "Weak structure: the groups overlap a lot, so treat this as a convenient grouping only."
 
 
-def _traits(prof: pd.DataFrame, overall: pd.Series, spread: pd.Series, labels, units) -> dict[int, str]:
+def _trait_z(prof: pd.DataFrame, overall: pd.Series, spread: pd.Series, units) -> dict[int, pd.Series]:
+    """Per cluster: the features where it differs clearly and meaningfully from the overall average, strongest first."""
     out = {}
     for c, row in prof.iterrows():
         z = ((row[overall.index] - overall) / spread.replace(0, np.nan)).dropna()
-        z = z[z.abs() >= TRAIT_Z].reindex(z.abs().sort_values(ascending=False).index).head(3)
+        keep = [f for f in z.index if abs(z[f]) >= TRAIT_Z and _meaningful(row[f] - overall[f], overall[f], units[f])]
+        z = z[keep]
+        out[c] = z.reindex(z.abs().sort_values(ascending=False).index)
+    return out
+
+
+def _lower_first(label: str) -> str:
+    """'On-time rate' -> 'on-time rate' but 'Total Sales' -> 'total Sales' (column names keep their case)."""
+    return label[:1].lower() + label[1:] if label[:1].isupper() and not label[1:2].isupper() else label
+
+
+def _direction(f: str, up: bool, units, capital: bool = False) -> str:
+    """'more'/'fewer' for counts (rows, orders), else 'higher'/'lower'."""
+    w = ("more" if up else "fewer") if units.get(f) == "count" else ("higher" if up else "lower")
+    return w.capitalize() if capital else w
+
+
+def _traits(prof: pd.DataFrame, overall: pd.Series, spread: pd.Series, labels, units) -> dict[int, str]:
+    out = {}
+    for c, z in _trait_z(prof, overall, spread, units).items():
+        z = z.head(3)
         if z.empty:
             out[c] = "Close to the overall average on every feature."
             continue
-        out[c] = "; ".join(f"{'higher' if v > 0 else 'lower'} {labels[f].lower()} ({_fmt(row[f], units[f])} vs {_fmt(overall[f], units[f])} overall)"
-                           for f, v in z.items())
+        row = prof.loc[c]
+        out[c] = "; ".join(f"{_direction(f, v > 0, units)} {_lower_first(labels[f])} ({_fmt(row[f], units[f])} vs "
+                           f"{_fmt(overall[f], units[f])} overall)" for f, v in z.items())
     return out
+
+
+def _names(prof: pd.DataFrame, overall: pd.Series, spread: pd.Series, labels, units) -> dict[int, str]:
+    """A short name per cluster from its strongest trait; clusters with the same name get the next trait added."""
+    zs = _trait_z(prof, overall, spread, units)
+    names = {}
+    order = list(prof.columns)
+    for c, z in zs.items():
+        if z.empty:
+            names[c] = "Close to average"
+            continue
+        near = [f for f in z.index if abs(z[f]) >= 0.85 * abs(z.iloc[0])]
+        lead = min(near, key=order.index)
+        zs[c] = pd.concat([z[[lead]], z.drop(lead)])
+        names[c] = f"{_direction(lead, z[lead] > 0, units, True)} {_lower_first(labels[lead])}"
+    seen: dict[str, list[int]] = {}
+    for c, n in names.items():
+        seen.setdefault(n, []).append(c)
+    for n, cs in seen.items():
+        if len(cs) > 1:
+            for c in cs:
+                z = zs[c]
+                if len(z) > 1:
+                    names[c] = f"{n}, {_direction(z.index[1], z.iloc[1] > 0, units)} {_lower_first(labels[z.index[1]])}"
+    return names
+
+
+def separation(X: pd.DataFrame, clusters: pd.Series) -> pd.Series:
+    """Share of each feature's variance that lies between clusters (eta squared, 0-1): which features the clusters
+    actually differ on. Computed on the scaled values the clustering used."""
+    total = ((X - X.mean()) ** 2).sum()
+    means = X.groupby(clusters).transform("mean")
+    between = ((means - X.mean()) ** 2).sum()
+    return (between / total.replace(0, np.nan)).fillna(0.0).clip(0, 1).sort_values(ascending=False)
 
 
 def run_segmentation(table: FeatureTable, features: list[str] | None = None, k: int | None = None,
@@ -273,7 +376,10 @@ def run_segmentation(table: FeatureTable, features: list[str] | None = None, k: 
     prof.insert(0, "entities", cl.value_counts().sort_index())
     overall = X.mean()
     traits = _traits(prof, overall, X.std(ddof=0), table.labels, table.units)
+    names = _names(prof, overall, X.std(ddof=0), table.labels, table.units)
+    sep = separation(pd.DataFrame(Z, index=raw.index, columns=feats), cl)
     assign = pd.concat([cl.rename("cluster"), raw], axis=1).reset_index()
     assign = assign.rename(columns={assign.columns[0]: table.entity}).sort_values(["cluster", table.entity]).reset_index(drop=True)
     return SegmentationResult(assign, prof, overall, traits, scores, k, mode, sil, quality_label(sil), tuple(feats),
-                              {f: table.labels[f] for f in feats}, {f: table.units[f] for f in feats}, scaler, tuple(warnings))
+                              {f: table.labels[f] for f in feats}, {f: table.units[f] for f in feats}, scaler, tuple(warnings),
+                              names=names, separation=sep)
