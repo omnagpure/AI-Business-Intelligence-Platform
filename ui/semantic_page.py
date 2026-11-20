@@ -10,7 +10,7 @@ from analytics.primary_columns import PICKABLE, explain_choice, primary_candidat
 from core.exceptions import BIError
 from core.logging_config import get_logger
 from semantic.column_lexicon import DOMAIN_LABELS, DOMAINS, ROLE_LABELS, ROLES
-from semantic.semantic_model import SemanticModel
+from semantic.semantic_model import MODEL_MODE_LABELS, MODEL_MODES, SemanticModel
 from ui import state
 from ui.layout import badge, chips, empty_state, eyebrow, no_dataset_notice, note_list, page_title
 
@@ -42,6 +42,9 @@ def _render_domain(model: SemanticModel) -> None:
                     + note_list(list(d.evidence)), unsafe_allow_html=True)
         if d.alternatives:
             st.caption("Also considered: " + ", ".join(f"{DOMAIN_LABELS[k]} {_pct(v)}" for k, v in d.alternatives))
+        st.caption(("Supply-chain dataset. " if model.is_supply_chain else "")
+                   + (model.name_model_use.summary if state.get_name_model_status().available
+                      else "Roles come from the rules (no trained name model is loaded)."))
     with right:
         options = [_AUTO] + [DOMAIN_LABELS[x] for x in DOMAINS]
         current = _AUTO if ov["domain"] is None else DOMAIN_LABELS[ov["domain"]]
@@ -183,10 +186,13 @@ def _pct_str(x: float) -> str:
     return f"{x * 100:.0f}%"
 
 
-def _render_model_tab() -> None:
-    status, use = state.get_name_model_status(), state.get_use_model()
+def _render_model_tab(model: SemanticModel | None = None) -> None:
+    status, mode = state.get_name_model_status(), state.get_model_mode()
     st.markdown("An optional helper that reads **only the column name** and suggests a role. "
-                "Its opinion is blended with the rules; your overrides always win. Column values never reach it.")
+                "Its opinion is blended with the rules; your overrides always win. Column values never reach it.\n\n"
+                "**Automatic** (default): the rules first decide whether the data is supply chain. If it is, the rules "
+                "stay in charge and the model only fills columns they could not identify, because the rules are tuned "
+                "for supply chain and beat the model there. For any other data the model votes on every column.")
     if not status.available:
         st.info(status.reason)
         st.caption("To train it (optional), run these from the project folder, then press Check again:")
@@ -196,11 +202,13 @@ def _render_model_tab() -> None:
             state.reload_name_model()
             st.rerun()
         return
-    new = st.toggle("Blend the trained name model into suggestions", value=use,
-                    help="Off by default. Turning it on re-runs the column analysis.")
-    if new != use:
-        state.set_use_model(new)
-        st.rerun()
+    if st.session_state.get("sem_model_mode") != mode:     # follow the saved setting (also changeable on the other page)
+        st.session_state["sem_model_mode"] = mode
+    st.radio("Use the trained name model", MODEL_MODES, horizontal=True, format_func=MODEL_MODE_LABELS.get,
+             key="sem_model_mode", on_change=lambda: state.set_model_mode(st.session_state["sem_model_mode"]),
+             help="Changing this re-runs the column analysis.")
+    if model is not None:
+        st.info(model.name_model_use.summary)
     c = st.columns(3)
     c[0].metric("Model version", status.version)
     c[1].metric("Trained", status.trained_at or "n/a")
@@ -219,6 +227,23 @@ def _render_model_tab() -> None:
             hide_index=True)
         st.caption("Synthetic and hand-labelled names only. This does not measure accuracy on your own data. "
                    "Where the model does not beat the rules, treat it as a second opinion, not an upgrade.")
+        if "other_domains_n" in m:
+            rows = [{"Test": f"HR, marketing, SaaS and finance tables, all columns (n={m['other_domains_n']})",
+                     "Rules only": _pct_str(m["other_domains_rules_accuracy"]),
+                     "Automatic": _pct_str(m["other_domains_auto_accuracy"])},
+                    {"Test": f"Same tables, headers not among the training names (n={m['other_domains_unseen_n']})",
+                     "Rules only": _pct_str(m["other_domains_unseen_rules_accuracy"]),
+                     "Automatic": _pct_str(m["other_domains_unseen_auto_accuracy"])}]
+            if "real_files_n" in m:
+                rows.append({"Test": f"Real supply-chain files, labelled columns (n={m['real_files_n']})",
+                             "Rules only": _pct_str(m["real_files_rules_accuracy"]),
+                             "Automatic": _pct_str(m["real_files_auto_accuracy"])})
+            st.markdown("**End to end, as the app runs it** (names, values and relationships; rules only vs Automatic)")
+            st.dataframe(pd.DataFrame(rows), hide_index=True)
+            st.caption("The tables are small and synthetic, so treat these as a sanity check. On supply-chain names alone "
+                       f"the model scores {_pct_str(m['supply_chain_holdout_model_accuracy'])} against "
+                       f"{_pct_str(m['supply_chain_holdout_rules_accuracy'])} for the rules, which is why Automatic "
+                       "keeps the rules in charge there.")
     else:
         st.caption("No evaluation results match this model file. Run python -m training.evaluate_semantic_model.")
     if st.button("Check again"):
@@ -261,7 +286,7 @@ def render_semantic_page() -> None:
     with t_mix:
         _render_mix(model)
     with t_model:
-        _render_model_tab()
+        _render_model_tab(model)
     with st.expander("How suggestions are made"):
         st.markdown(
             "Each column is scored against every role using its name (vocabulary and phrases), its detected "
@@ -269,5 +294,6 @@ def render_semantic_page() -> None:
             "relationships between columns (for example revenue = quantity x price). Scores are heuristics, "
             "not probabilities. Columns with no strong signal stay Unknown rather than being guessed, and "
             "columns whose names suggest personal data are excluded. The domain is inferred from column "
-            "vocabulary plus the roles found. If you switch on the optional trained name model (Trained model tab), its "
-            "name-only opinion is blended in at a small weight. Check anything marked for review.")
+            "vocabulary plus the roles found. The optional trained name model (Trained model tab) adds a name-only "
+            "opinion: on supply-chain data only for columns the rules cannot identify, on other data for every "
+            "column. Check anything marked for review.")

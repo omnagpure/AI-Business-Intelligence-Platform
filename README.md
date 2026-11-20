@@ -87,12 +87,15 @@ python -m ruff check .
   Dashboard with the synthetic sample data (`assets/screen-dashboard-*.webp`); retake it if the dashboard changes.
 
 ## Optional: train the semantic name model
-The app works without it (rules only). The model reads only column *names* and is blended in when you switch it on
-(Semantics > Trained model, or Settings). It is off by default.
+The app works without it (rules only). The model reads only column *names*. Once trained, it is used in
+**Automatic** mode by default (Semantics > Trained model, or Settings; also "Always on" and "Off"): the rules first
+decide whether the data is supply chain. If it is, the rules stay in charge and the model only fills columns they
+could not identify (the rules are tuned for supply chain and beat the model there). For any other data the model
+votes on every column, which is where it helps (HR, marketing, SaaS, finance vocabulary).
 ```powershell
 python -m training.make_data                 # writes training/data/*.csv (synthetic + hand-labelled headers)
 python -m training.train_semantic_model      # writes training/models/semantic_model.joblib + .meta.json
-python -m training.evaluate_semantic_model   # held-out evaluation, compared with the rules using names alone
+python -m training.evaluate_semantic_model   # held-out names vs name-only rules, plus end-to-end rules vs Automatic
 ```
 Optionally score it end to end on your own files:
 ```powershell

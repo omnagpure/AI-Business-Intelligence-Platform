@@ -264,6 +264,35 @@ because statsmodels was missing. Not verified: the Reports page in real Streamli
 - **Model:** training data now has labelled supply-chain headers (half trained on, half held out), misspelling augmentation and more short forms. `evaluate_semantic_model` reports a supply-chain held-out line. Retrain locally: `python -m training.make_data`, `python -m training.train_semantic_model`, `python -m training.evaluate_semantic_model`.
 - **Tests:** `tests/test_supply_chain_headers.py` (13 tests).
 
+## Phase 9, Batch 3: supply-chain rules and the automatic name-model switch
+**Decision:** the project targets supply-chain data, where the rules beat the name model (supply-chain held-out names:
+model 72%, rules 97%). The model is therefore used automatically only where it helps.
+
+- **Supply-chain detection** (`semantic/business_domain.py`): three or more supply-chain-only terms in the column names
+  (`SUPPLY_CHAIN_TERMS` in `semantic/column_lexicon.py`; shared commerce words such as order/product/customer excluded)
+  make the domain supply chain even when retail, operations or inventory vocabulary outnumbers it. **DataCo now reads as
+  supply chain (75%, was retail 36%)**, which reverses the Batch 2 decision below; Superstore-style retail data (ship date
+  and ship mode only) stays retail. Confidence for supply chain grows with the number of terms and supplier/warehouse
+  roles (other three real files: 90%, 72%, 69%, were 37%, 32%, 52%). `assess_supply_chain` is the single definition used
+  by the switch and by the supply-chain KPIs (`analytics/kpis.py`); a domain chosen by the user wins.
+- **Supply-chain roles:** "order value"/"PO amount" on purchasing data is cost (spend), not revenue; `product_sku` is a
+  product (sku counts as an id-style token next to an entity word); two-valued "... Status" columns are status flags
+  (DataCo `Product Status`). The golden roles were refreshed on purpose; these were the only role changes on the four
+  real files. Note: the hand label for `Product Status` in `training/make_data.py` (category) was left unchanged.
+- **Automatic switch** (`semantic/semantic_model.py`, `MODEL_MODES`): Automatic (default) / Always on / Off. Rules run
+  first; supply-chain data gets the model only for columns the rules left Unknown, other data gets it on every column.
+  Where the rules found nothing the model's weight is 0.6 (else 0.3), and its vote for a role the values rule out (text
+  as revenue, numbers as dates) is cut to a tenth (`_kind_allows`). Rule scoring runs once for both passes. The Semantics
+  page shows the decision; Settings and the Trained model tab have the three-way choice.
+- **Model:** 218 names added from marketing, SaaS, HR and finance; retrained (1-8a332044). `evaluate_semantic_model`
+  now runs end to end as the app does (rules only vs Automatic) on labelled HR/marketing/SaaS/finance tables
+  (`training/domain_frames.py`) and on the real supply-chain files. Results: other domains 68% -> 91% (n=44; headers not
+  in the training names 60% -> 73%, n=15; the old model reached 70%); real supply-chain files 95.9% both (the model
+  changed no role). On names alone the new model scores lower on real supply-chain headers (92%, was 97%), which
+  Automatic mode does not use. `scikit-learn` pinned to 1.5.x so the saved model keeps loading.
+- **Tests:** `tests/test_model_switch.py` (19). `tests/test_role_stability.py` now finds the real files in sub-folders
+  and under slightly different names; with `BI_REAL_FILES_DIR` set, all four real files are checked.
+
 ## Phase 9, Batch 2: performance, report options, progress bars
 **Excel export was deliberately removed** (module, button, tests, documentation). Reports are PDF and HTML only. `openpyxl` stays in
 `requirements.txt` because it reads uploaded .xlsx files.

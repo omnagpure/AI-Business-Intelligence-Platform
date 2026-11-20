@@ -277,6 +277,44 @@ SEED_NAMES_EXTRA: dict[str, str] = {
 for _role, _more in SEED_NAMES_EXTRA.items():
     SEED_NAMES[_role] = SEED_NAMES[_role] + ", " + _more
 
+# Names from the non-supply-chain domains the name model is switched on for (marketing, SaaS, HR, finance).
+# Supply chain is left to the rules, so the model's job is the vocabulary the rules lexicon does not cover.
+SEED_NAMES_OTHER_DOMAINS: dict[str, str] = {
+    "revenue": "conversion value, purchase value, attributed revenue, revenue attributed, new mrr, expansion mrr, "
+               "recurring revenue, subscription income, ad sales, sponsorship revenue, ltv, lifetime value, clv, "
+               "customer lifetime value, contract value, total contract value, tcv, acv, renewal revenue, upsell revenue",
+    "cost": "cpc, cost per click, cpm, cost per mille, cpa, cost per acquisition, cost per lead, cpl, media cost, "
+            "campaign spend, campaign cost, ad cost, paid media spend, salary, monthly salary, annual salary, base salary, "
+            "base pay, gross pay, net pay, ctc, wage, hourly wage, compensation, total compensation, bonus paid, payroll, "
+            "employer cost, server cost, cloud cost, infrastructure cost, hosting cost, tooling cost, support cost",
+    "percentage": "roas, return on ad spend, cvr, engagement rate, view rate, completion ratio, open ratio, "
+                  "nps, net promoter score, csat, csat score, salary hike pct, percent salary hike, hike pct, "
+                  "activation rate, trial conversion rate, net revenue retention, nrr, gross revenue retention, grr, "
+                  "logo churn rate, revenue churn rate, stickiness, dau mau ratio",
+    "quantity": "dau, mau, wau, daily active users, monthly active users, active users, sessions, logins, login count, "
+                "signups, new signups, trials started, seats purchased, licenses, licence count, api calls, events count, "
+                "downloads, installs, leads, mqls, sqls, opportunities count, conversions, total conversions, reach, "
+                "video views, likes, shares, followers, num projects, number of projects, num dependents, "
+                "num companies worked, number of companies worked, absences, training times last year, trainings attended, "
+                "tickets raised, support tickets, feature usage count",
+    "duration": "years at company, years in current role, years since last promotion, years with curr manager, "
+                "years with current manager, total working years, months since hire, avg session duration, "
+                "time on page, time to convert, days to convert, sales cycle days, onboarding days, time to value",
+    "category": "job role, business travel, education field, campaign name, campaign objective, ad group name, ad set, "
+                "ad set name, placement, audience segment, keyword match type, match type, plan tier, billing cycle, "
+                "billing interval, billing frequency, gl account, ledger account, account category, transaction type, "
+                "entry type, journal type, cost centre, profit center, expense category, acquisition channel, "
+                "signup source, persona, cohort, lifecycle stage, deal stage, pipeline stage, lead status",
+    "flag": "overtime flag, works overtime, is active, active flag, is premium, is trial, on trial, has discount, "
+            "is weekend, holiday flag, is remote, remote flag, auto renew, autorenew flag, is paid, paid flag",
+    "target": "left, has left company, churned flag, will renew, renewed, did renew, upgraded, is upgraded, "
+              "converted to paid, became customer",
+    "identifier": "ad set id, adset id, creative id, keyword id, journal id, journal entry id, entry id, gl code, "
+                  "ledger id, voucher id, subscription id, plan id, workspace id, tenant key id, invoice line id",
+    "customer": "workspace, workspace name, organization, org name, company, customer company, client company, "
+                "advertiser, advertiser id, advertiser name, account owner id",
+}
+
 # Supply-chain roles (hand-written, independent of semantic/column_lexicon.py).
 SEED_NAMES["supplier"] = (
     "supplier, supplier name, supplier id, vendor, vendor name, vendor id, vendor code, supplier code, manufacturer, "
@@ -290,6 +328,8 @@ SEED_NAMES["flag"] = (
     "on time delivery, is on time, delivered on time, in full, otif flag, stockout, stockout flag, stock out, is delayed, "
     "delayed flag, was late, is late, backorder flag, backordered, promotion flag, promo flag, on promotion, "
     "is stockout, delivered in full, late shipment flag, expedited flag, is expedited, quality hold flag, rejected flag")
+for _role, _more in SEED_NAMES_OTHER_DOMAINS.items():
+    SEED_NAMES[_role] = SEED_NAMES[_role] + ", " + _more
 
 
 # ---- supply-chain headers (ERP / SCM / WMS / TMS style) ------------------------------------------

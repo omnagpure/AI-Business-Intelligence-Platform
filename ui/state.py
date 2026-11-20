@@ -14,7 +14,7 @@ from cleaning.actions import CleaningAction
 from ingestion.pipeline import IngestionResult
 from ingestion.profiler import DatasetProfile
 from ingestion.quality_report import QualityReport
-from semantic.semantic_model import SemanticModel, build_semantic_model
+from semantic.semantic_model import MODEL_MODES, SemanticModel, build_semantic_model
 from semantic.trained_name_model import ModelStatus, TrainedNameModel, load_name_model
 
 _KEY = "ingestion_result"
@@ -24,7 +24,7 @@ _PROPS = "cleaning_proposals"
 _SEM_OVR = "semantic_overrides"
 _SEM = "semantic_model_cache"
 _SEM_VER = "semantic_editor_version"
-_USE_MODEL = "use_name_model"
+_MODEL_MODE = "name_model_mode"
 _FILTER = "shared_filter"
 _FSCOPE = "filter_scope"
 _DSID = "active_dataset_id"      # the signed-in user's stored dataset record behind the active result (None for sample data)
@@ -169,11 +169,11 @@ def get_semantic_model() -> SemanticModel | None:
     cs, ov = get_cleaning(), get_semantic_overrides()
     nm = get_active_name_model()
     key = (result.dataset.fingerprint, cs.result.actions_fingerprint if cs else "",
-           json.dumps(ov, sort_keys=True), nm.version if nm else "rules-only")
+           json.dumps(ov, sort_keys=True), nm.version if nm else "rules-only", get_model_mode())
     cached = st.session_state.get(_SEM)
     if cached is not None and cached[0] == key:
         return cached[1]
-    model = build_semantic_model(df, profile, ov["roles"], ov["domain"], get_active_name_model())
+    model = build_semantic_model(df, profile, ov["roles"], ov["domain"], nm, get_model_mode())
     st.session_state[_SEM] = (key, model)
     return model
 
@@ -194,16 +194,21 @@ def reload_name_model() -> None:
     st.session_state.pop(_SEM, None)
 
 
-def get_use_model() -> bool:
-    """User preference. Off by default: the model is optional and only blended in when switched on."""
-    return bool(st.session_state.get(_USE_MODEL, False))
+def get_model_mode() -> str:
+    """How the name model is used: "auto" (default; rules decide whether the data is supply chain), "on" or "off".
+    See semantic.semantic_model.MODEL_MODES."""
+    mode = st.session_state.get(_MODEL_MODE, "auto")
+    return mode if mode in MODEL_MODES else "auto"
 
 
-def set_use_model(value: bool) -> None:
-    st.session_state[_USE_MODEL] = bool(value)
+def set_model_mode(mode: str) -> None:
+    if mode not in MODEL_MODES:
+        raise ValueError(f"Unknown name-model mode {mode!r}")
+    st.session_state[_MODEL_MODE] = mode
     st.session_state[_SEM_VER] = st.session_state.get(_SEM_VER, 0) + 1
 
 
 def get_active_name_model() -> TrainedNameModel | None:
+    """The loaded model, unless it is switched off. In "auto" mode build_semantic_model decides how to use it."""
     model, _ = _load_name_model_cached()
-    return model if (model is not None and get_use_model()) else None
+    return model if (model is not None and get_model_mode() != "off") else None

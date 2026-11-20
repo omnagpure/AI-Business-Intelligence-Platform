@@ -16,12 +16,14 @@ from pandas.api import types as pdt
 
 from cleaning.type_inference import to_numeric_clean
 from ingestion.profiler import ColumnProfile, DatasetProfile
-from semantic.column_lexicon import (ENTITY_ROLES, GENERIC_HEADERS, ID_TOKENS, IMAGE_TOKENS, LEXICON, LOCATION_NUMERIC_TOKENS, MONEY_ROLES, NUMERIC_ROLES, PROCUREMENT_CONTEXT,
+from semantic.column_lexicon import (DOCUMENT_TOKENS, ENTITY_ROLES, GENERIC_HEADERS, GENERIC_MONEY, ID_TOKENS, IMAGE_TOKENS, LEXICON, LOCATION_NUMERIC_TOKENS, MONEY_ROLES, NUMERIC_ROLES, PROCUREMENT_CONTEXT,
                                      RATIO_TOKENS, ROLE_LABELS, SALES_CONTEXT, SENSITIVE_TOKENS, semantic_tokens, token_set, tokenize)
 
 MIN_SCORE = 0.30          # below this a column is reported as Unknown
 SAMPLE_ROWS = 5000
-MODEL_WEIGHT = 0.3
+MODEL_WEIGHT = 0.3        # the model's share of the score where the rules found a role
+MODEL_WEIGHT_WEAK = 0.6   # its share where the rules found nothing (they would report Unknown)
+MODEL_SCOPES = ("all", "unknown")   # blend into every column, or only fill the columns the rules left Unknown
 _ROLES = [r for r in ROLE_LABELS if r != "unknown"]
 # Name tokens that describe an *attribute* (so "Customer City" is a location, not a customer).
 _ATTR_TOKENS = frozenset().union(*(LEXICON[r].strong for r in (
@@ -70,6 +72,7 @@ class _Feat:
     n: int
     vals: pd.Series | None
     generic: bool = False
+    doc_money: bool = False      # "order value", "po amount": a generic money word plus the document it belongs to
     is_int: bool = False
     vmin: float = 0.0
     vmax: float = 0.0
@@ -81,6 +84,8 @@ def _features(df: pd.DataFrame, c: ColumnProfile) -> _Feat:
     f = _Feat(c.name, semantic_tokens(c.name), " ".join(tokenize(c.name)), c.kind, c.unique, c.unique / n, n, vals)
     toks = tokenize(c.name)
     f.generic = bool(toks) and all(t in GENERIC_HEADERS for t in toks)
+    f.doc_money = (not f.generic and bool(set(toks) & GENERIC_MONEY) and bool(set(toks) & DOCUMENT_TOKENS)
+                   and all(t in GENERIC_MONEY | DOCUMENT_TOKENS for t in toks))
     if vals is not None:
         f.is_int = bool((vals % 1 == 0).all())
         f.vmin, f.vmax = float(vals.min()), float(vals.max())
@@ -308,9 +313,11 @@ def _relationship_boosts(df: pd.DataFrame, feats: dict[str, _Feat],
 def _context_adjust(feats: dict[str, _Feat], scores: dict[str, dict[str, tuple[float, list[str]]]]) -> None:
     """Generic headers (Amount, Value, Total ...) take their meaning from neighbouring columns.
     Purchasing or logistics neighbours point to spend (cost); sales neighbours point to revenue.
-    Without such context nothing is boosted and the header stays low-confidence."""
+    Without such context nothing is boosted and the header stays low-confidence.
+    "Order value" / "PO amount" get the purchasing adjustment only: on a purchase order they are spend, and on a
+    sales order the name rules already read them as revenue."""
     for name, f in feats.items():
-        if not f.generic or f.kind != "numeric":
+        if not (f.generic or f.doc_money) or f.kind != "numeric":
             continue
         others = set().union(*(g.tokens for n, g in feats.items() if n != name)) if len(feats) > 1 else set()
         proc, sales = others & PROCUREMENT_CONTEXT, others & SALES_CONTEXT
@@ -319,20 +326,59 @@ def _context_adjust(feats: dict[str, _Feat], scores: dict[str, dict[str, tuple[f
             scores[name]["cost"] = (min(1.0, sc + 0.35), ev + [f"Context: neighbouring columns ({', '.join(sorted(proc)[:3])}) point to purchasing or logistics spend"])
             sc, ev = scores[name]["revenue"]
             scores[name]["revenue"] = (sc * 0.5, ev)
-        elif sales and not proc:
+        elif sales and not proc and f.generic:
             sc, ev = scores[name]["revenue"]
             scores[name]["revenue"] = (min(1.0, sc + 0.15), ev + [f"Context: neighbouring columns ({', '.join(sorted(sales)[:3])}) point to sales"])
 
 
-def classify_columns(df: pd.DataFrame, profile: DatasetProfile,
-                     name_model: NameModel | None = None) -> dict[str, ColumnSemantic]:
-    """Suggest a semantic role for every column. Reads only; never changes `df`."""
+def _kind_allows(role: str, f: _Feat) -> bool:
+    """Whether a column of this kind can hold the role at all. The name model sees names only, so its vote is
+    discounted heavily when the values rule the role out (a text column cannot be revenue)."""
+    if role in NUMERIC_ROLES:
+        return f.kind == "numeric"
+    if role == "datetime":
+        return f.kind == "temporal"
+    if role in ("flag", "target"):
+        return f.kind == "boolean" or f.unique <= 3
+    if role == "text":
+        return f.kind in ("text", "categorical")
+    if role in ("category", "location"):
+        return (f.kind in ("categorical", "boolean", "text") or (f.kind == "numeric" and f.is_int and f.unique <= 50)
+                or (role == "location" and bool(f.tokens & LOCATION_NUMERIC_TOKENS)))
+    if role in ENTITY_ROLES or role == "identifier":
+        return f.kind in ("identifier", "categorical", "text") or (f.kind == "numeric" and f.is_int)
+    return True
+
+
+Scores = dict[str, dict[str, tuple[float, list[str]]]]
+
+
+def score_columns(df: pd.DataFrame, profile: DatasetProfile) -> tuple[dict[str, _Feat], Scores]:
+    """Rule scores for every column and role (names, values, relationships, context). The expensive part;
+    `decide_roles` turns them into roles, with or without the name model, without recomputing them."""
     feats = {c.name: _features(df, c) for c in profile.columns_profile}
-    scores: dict[str, dict[str, tuple[float, list[str]]]] = {
-        n: {r: _score_role(r, f) for r in _ROLES} for n, f in feats.items()}
+    scores: Scores = {n: {r: _score_role(r, f) for r in _ROLES} for n, f in feats.items()}
     _relationship_boosts(df, feats, scores)
     _context_adjust(feats, scores)
+    return feats, scores
 
+
+def classify_columns(df: pd.DataFrame, profile: DatasetProfile,
+                     name_model: NameModel | None = None, model_scope: str = "all") -> dict[str, ColumnSemantic]:
+    """Suggest a semantic role for every column. Reads only; never changes `df`."""
+    feats, scores = score_columns(df, profile)
+    return decide_roles(profile, feats, scores, name_model, model_scope)
+
+
+def decide_roles(profile: DatasetProfile, feats: dict[str, _Feat], scores: Scores,
+                 name_model: NameModel | None = None, model_scope: str = "all") -> dict[str, ColumnSemantic]:
+    """Pick a role per column from the rule scores, optionally blending in the name model.
+
+    model_scope "all": the model votes on every column (30% where the rules found a role, 60% where they found
+    nothing). "unknown": the rules stay in charge and the model may only fill columns the rules left Unknown.
+    The model's vote for a role the column's values rule out (see _kind_allows) is cut to a tenth."""
+    if model_scope not in MODEL_SCOPES:
+        raise ValueError(f"model_scope must be one of {MODEL_SCOPES}")
     out: dict[str, ColumnSemantic] = {}
     for c in profile.columns_profile:
         f, sc = feats[c.name], scores[c.name]
@@ -346,21 +392,26 @@ def classify_columns(df: pd.DataFrame, profile: DatasetProfile,
             continue
         source = "rules"
         rules_best, rules_top = min(((r, v[0]) for r, v in sc.items()), key=lambda t: (-t[1], t[0]))
-        if name_model is not None:
+        rules_unknown = rules_top < MIN_SCORE
+        blended = False
+        if name_model is not None and (model_scope == "all" or rules_unknown):
             probs = name_model.predict_proba(c.name)
             if probs:
+                w = MODEL_WEIGHT_WEAK if rules_unknown else MODEL_WEIGHT
                 sc = dict(sc)           # blend on a copy: the rules-only scores stay untouched
                 for r, p in probs.items():
                     if r in sc and p > 0:
                         s0, e0 = sc[r]
-                        sc[r] = ((1 - MODEL_WEIGHT) * s0 + MODEL_WEIGHT * p, e0 + [f"Trained name model: p={p:.2f}"])
+                        p_eff = p if _kind_allows(r, f) else p * 0.1
+                        sc[r] = ((1 - w) * s0 + w * p_eff, e0 + [f"Trained name model: p={p:.2f}"])
+                blended = True
         ranked = sorted(((r, v[0]) for r, v in sc.items()), key=lambda t: (-t[1], t[0]))
         (best, s1), s2 = ranked[0], ranked[1][1]
         if s1 < MIN_SCORE:
             out[c.name] = ColumnSemantic(c.name, "unknown", 0.0, ("No strong signal from name or values",),
                                          tuple((r, round(s, 2)) for r, s in ranked[:2] if s > 0.15), "rules", c.kind)
             continue
-        if name_model is not None and (best != rules_best or rules_top < MIN_SCORE):
+        if blended and (best != rules_best or rules_unknown):
             source = "model"            # label a column "model" only when the model changed the outcome
         conf = min(0.97, s1) * (0.7 + 0.3 * min(1.0, (s1 - s2) / 0.4))
         ev_best = list(sc[best][1])

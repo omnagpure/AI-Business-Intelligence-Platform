@@ -66,7 +66,7 @@ LEXICON: dict[str, Lex] = {
     "supplier": _l("supplier vendor manufacturer", "provider distributor"),
     "warehouse": _l("warehouse depot plant facility", "dc hub site"),
     "flag": _l("stockout backorder otif delayed ontime promotion promo",
-               "flag", ("on time", "in full", "stock out", "is late", "is delayed", "was late")),
+               "flag status", ("on time", "in full", "stock out", "is late", "is delayed", "was late")),
 }
 
 # Short forms and spelling variants -> the canonical token the lexicon knows. Conservative on purpose: a short
@@ -90,12 +90,16 @@ _GLUE_SUFFIXES = frozenset("id no num number code key name ref reference date co
 # and their confidence is capped so they are never presented as certain.
 IMAGE_TOKENS = frozenset("url link image photo thumbnail picture".split())      # a link to a file is not a product or segment
 GENERIC_HEADERS = frozenset("amount value total code rate cost location reference ref time".split())
+# Money headers that are generic apart from naming the document they belong to ("order value", "po amount").
+# Their meaning (sales or spend) comes from the neighbouring columns, like a bare "Amount".
+GENERIC_MONEY = frozenset("amount value total".split())
+DOCUMENT_TOKENS = frozenset("order line po purchase".split())
 PROCUREMENT_CONTEXT = frozenset("po purchase supplier vendor procurement freight shipment shipping carrier transit warehouse".split())
 SALES_CONTEXT = frozenset("customer sales sale invoice revenue product retail".split())
 LOCATION_NUMERIC_TOKENS = frozenset({"lat", "latitude", "lon", "lng", "longitude", "zip", "zipcode", "postal"})
 RATIO_TOKENS = frozenset({"ratio", "rate", "pct", "percent", "percentage", "share", "proportion", "margin"})
 SENSITIVE_TOKENS = frozenset({"fname", "lname", "firstname", "lastname", "surname", "password", "passwd", "pwd", "secret", "email", "phone", "mobile", "ssn", "passport", "iban"})
-ID_TOKENS = frozenset({"id", "key", "code", "uuid", "guid"})
+ID_TOKENS = frozenset({"id", "key", "code", "uuid", "guid", "sku"})
 ENTITY_ROLES = ("customer", "product", "supplier", "warehouse")
 
 # ---- business domains ------------------------------------------------------------------------
@@ -121,7 +125,8 @@ DOMAIN_LEXICON: dict[str, frozenset[str]] = {
     "hr": _d("employee salary department hire attrition tenure manager payroll job performance leave headcount"),
     "supply_chain": _d("supplier vendor warehouse lead reorder stockout backorder fill otif delivery delivered carrier "
                        "shipment shipping inventory stock freight transit order received ordered defect "
-                       "procurement purchase moq putaway pallet dock tracking eta"),
+                       "procurement purchase moq putaway pallet dock tracking eta late scheduled dispatch route "
+                       "logistics fulfillment fulfilment shipped"),
     "operations": _d("shipping shipment delivery carrier route late delay risk defect throughput production "
                      "supply schedule dispatch freight"),
 }
@@ -136,6 +141,16 @@ DOMAIN_ROLE_SUPPORT: dict[str, frozenset[str]] = {
     "operations": frozenset({"duration", "location", "target"}),
     "supply_chain": frozenset({"supplier", "warehouse", "flag", "duration", "quantity"}),
 }
+
+# Terms that only supply-chain data uses (shared commerce words such as order, product or customer are left out).
+# A dataset whose column names contain at least MIN_SUPPLY_CHAIN_TERMS of them is treated as supply chain, even when
+# its many order/product/customer columns would otherwise make it read as retail (DataCo is the reference case).
+SUPPLY_CHAIN_TERMS = frozenset(
+    "supplier vendor manufacturer warehouse depot plant facility lead reorder stockout backorder otif fill delivery "
+    "delivered carrier shipment shipping shipped freight transit procurement purchase po moq putaway pallet dock "
+    "tracking eta etd late scheduled dispatch inventory stock downtime defect logistics fulfillment fulfilment".split())
+MIN_SUPPLY_CHAIN_TERMS = 3
+SUPPLY_CHAIN_ROLES = frozenset({"supplier", "warehouse"})
 
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 

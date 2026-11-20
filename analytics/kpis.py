@@ -646,7 +646,7 @@ def _add_supply_chain(ctx: _Ctx, results: list[KPIResult]) -> list[KPIResult]:
             log.exception("Supply-chain KPI builder %s failed", fn.__name__)
             extra.append(ctx.skipped(fn.__name__.removeprefix("_k_"), fn.__name__.removeprefix("_k_").replace("_", " ").title(),
                                      "Supply chain", "number", "Could not be calculated for this dataset."))
-    relevant = (ctx.model.domain.domain == "supply_chain" or bool(ctx.model.columns_with_role("supplier"))
+    relevant = (ctx.model.is_supply_chain
                 or any(r.status in (OK, NOT_CALCULABLE) for r in extra))
     if not relevant:
         return results

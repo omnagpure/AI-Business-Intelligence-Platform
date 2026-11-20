@@ -47,7 +47,7 @@
    "Product Image": 0.97,
    "Product Name": 0.62,
    "Product Price": 0.85,
-   "Product Status": 0.21,
+   "Product Status": 0.55,
    "Sales": 0.97,
    "Sales per customer": 0.85,
    "Shipping Mode": 0.97,
@@ -55,8 +55,8 @@
    "order date (DateOrders)": 0.97,
    "shipping date (DateOrders)": 0.97
   },
-  "domain": "retail",
-  "domain_confidence": 0.36,
+  "domain": "supply_chain",
+  "domain_confidence": 0.75,
   "roles": {
    "Benefit per order": "profit",
    "Category Id": "identifier",
@@ -104,13 +104,71 @@
    "Product Image": "text",
    "Product Name": "product",
    "Product Price": "price",
-   "Product Status": "category",
+   "Product Status": "flag",
    "Sales": "revenue",
    "Sales per customer": "revenue",
    "Shipping Mode": "category",
    "Type": "category",
    "order date (DateOrders)": "datetime",
    "shipping date (DateOrders)": "datetime"
+  }
+ },
+ "inventory-supply-chain-v1.0.0-analysis.xlsx": {
+  "confidence": {
+   "expected_at": 0.6,
+   "line_count": 0.65,
+   "order_value": 0.43,
+   "ordered_at": 0.97,
+   "purchase_order_id": 0.97,
+   "quantity_ordered": 0.95,
+   "quantity_received": 0.95,
+   "received_at": 0.9,
+   "status": 0.8,
+   "supplier_country": 0.67,
+   "supplier_id": 0.9,
+   "warehouse_id": 0.9,
+   "warehouse_region": 0.67
+  },
+  "domain": "supply_chain",
+  "domain_confidence": 0.69,
+  "roles": {
+   "expected_at": "datetime",
+   "line_count": "quantity",
+   "order_value": "cost",
+   "ordered_at": "datetime",
+   "purchase_order_id": "identifier",
+   "quantity_ordered": "quantity",
+   "quantity_received": "quantity",
+   "received_at": "datetime",
+   "status": "category",
+   "supplier_country": "location",
+   "supplier_id": "supplier",
+   "warehouse_id": "warehouse",
+   "warehouse_region": "location"
+  }
+ },
+ "supply-chain-manufacturing-sample.csv": {
+  "confidence": {
+   "defects": 0.65,
+   "downtime_minutes": 0.85,
+   "machine_id": 0.97,
+   "on_time_delivery": 0.0,
+   "product_sku": 0.79,
+   "run_id": 0.97,
+   "supplier_id": 0.79,
+   "units_produced": 0.95
+  },
+  "domain": "supply_chain",
+  "domain_confidence": 0.72,
+  "roles": {
+   "defects": "quantity",
+   "downtime_minutes": "duration",
+   "machine_id": "identifier",
+   "on_time_delivery": "unknown",
+   "product_sku": "product",
+   "run_id": "identifier",
+   "supplier_id": "supplier",
+   "units_produced": "quantity"
   }
  },
  "supply_chain_dataset1.csv": {
@@ -132,7 +190,7 @@
    "Warehouse_ID": 0.9
   },
   "domain": "supply_chain",
-  "domain_confidence": 0.37,
+  "domain_confidence": 0.9,
   "roles": {
    "Date": "datetime",
    "Demand_Forecast": "quantity",

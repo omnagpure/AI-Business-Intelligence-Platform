@@ -16,11 +16,18 @@
 - Tested with pandas 3.0 / Python 3.12 / Streamlit 1.66 in the author's sandbox only.
 
 # Added with Phase 4
-- Semantic roles are heuristics. Domain for supply-chain data may read as Retail, Inventory or Operations (override available).
+- Semantic roles are heuristics. Supply-chain data is recognised from supply-chain-only terms in the column names
+  (three or more of supplier, warehouse, shipping, delivery, lead, reorder, stockout, freight, late, scheduled ...) or a
+  supplier/warehouse column. Order data with fewer such terms may still read as Retail (override available).
+- The name model switch (Automatic) decides from the rules-only result. A wrong supply-chain decision means the model is
+  used too much or too little; choosing the domain by hand, or "Always on"/"Off", overrides it.
+- No role exists for generic measures (weight, temperature) or ledger debit/credit amounts; such columns stay Unknown.
 - The optional name model sees names only, is trained on hand-written and synthetic names, and was evaluated on
   held-out and unseen-industry names plus 73 hand-labelled real headers. It beats the name-only rules on abbreviated
   names, but those test names share a generator with the training names and the real headers overlap in vocabulary
-  with the seeds, so the scores are optimistic. It is off by default and is not evidence of accuracy on your own data.
+  with the seeds, so the scores are optimistic. The end-to-end check on HR/marketing/SaaS/finance tables uses small
+  synthetic tables whose headers partly overlap the training names (the non-overlapping subset is reported separately,
+  n=15). None of this is evidence of accuracy on your own data.
 - A saved model only loads with the scikit-learn minor version it was trained with; otherwise retrain.
 - Columns whose names suggest personal data (email, phone, password, ...) are excluded from role detection.
 - The Overview page reports counts and detected roles only. KPIs, charts of results and insights arrive in Phase 5+.

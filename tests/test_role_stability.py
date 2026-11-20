@@ -1,6 +1,7 @@
 """Roles must not change because of performance work: faster relationship search == original, and real files keep their roles."""
 import json
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -20,10 +21,18 @@ REAL_FILES = ("DataCoSupplyChainDataset.csv", "supply_chain_dataset1.csv", "supp
               "inventory-supply-chain-v1_0_0-analysis.xlsx")
 
 
+def _key(name: str) -> str:
+    """'inventory-supply-chain-v1.0.0-analysis' and 'inventory-supply-chain-v1_0_0-analysis' are the same file."""
+    return re.sub(r"[^0-9a-z]", "", Path(name).stem.lower())
+
+
 def _find(name: str) -> Path | None:
+    """The file in a real-files folder or any folder below it (downloads often unpack into sub-folders)."""
     for d in REAL_DIRS:
-        for cand in (d / name, *d.glob(f"*{Path(name).stem}*{Path(name).suffix}")):
-            if cand.is_file():
+        if not d.is_dir():
+            continue
+        for cand in sorted(d.rglob(f"*{Path(name).suffix}")):
+            if cand.is_file() and _key(name) in _key(cand.name):
                 return cand
     return None
 
@@ -90,14 +99,16 @@ def test_real_file_roles_match_original_code_and_frozen_golden(name):
     r = ingest_bytes(path.read_bytes(), path.name, max_bytes=10**10)
     m, new = _snapshot(r.dataset.df, r.profile)
     assert new == _with_reference(r.dataset.df, r.profile)[1]                              # identical to the original algorithm
-    key = next((k for k in GOLDEN if Path(k).stem in path.stem or path.stem in Path(k).stem), None)
+    key = next((k for k in GOLDEN if _key(k) in _key(path.name) or _key(path.name) in _key(k)), None)
     if key:                                                                                # and to the roles frozen before Batch 2
         g = GOLDEN[key]
         assert {n: c.role for n, c in m.columns.items()} == g["roles"]
         assert {n: c.confidence for n, c in m.columns.items()} == g["confidence"]
         assert (m.domain.domain, m.domain.confidence) == (g["domain"], g["domain_confidence"])
+        assert m.is_supply_chain                                                         # all four are supply-chain files
 
 
 def test_frozen_golden_covers_the_known_domains():
-    assert GOLDEN["DataCoSupplyChainDataset.csv"]["domain"] == "retail"          # documented in docs/STATUS.md; changing it needs a decision
-    assert GOLDEN["supply_chain_dataset1.csv"]["domain"] == "supply_chain"
+    # DataCo read as retail until the supply-chain term rule (docs/STATUS.md); all four real files are supply chain.
+    assert {k: v["domain"] for k, v in GOLDEN.items()} == {k: "supply_chain" for k in GOLDEN}
+    assert set(GOLDEN) >= {"DataCoSupplyChainDataset.csv", "supply_chain_dataset1.csv"}
