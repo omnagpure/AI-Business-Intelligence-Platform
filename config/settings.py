@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEXT_EXTENSIONS: tuple[str, ...] = (".csv", ".tsv", ".txt")
 EXCEL_EXTENSIONS: tuple[str, ...] = (".xlsx", ".xlsm", ".xls")
 SUPPORTED_EXTENSIONS: tuple[str, ...] = TEXT_EXTENSIONS + EXCEL_EXTENSIONS
-APP_NAME = "Tessaly"
+APP_NAME = "Vesper"
 APP_TAGLINE = "Business intelligence"
 APP_VERSION = "0.1.0"
 

@@ -85,7 +85,7 @@ def _styles():
 class _Doc(BaseDocTemplate):
     def __init__(self, buf, data: ReportData, fonts):
         super().__init__(buf, pagesize=A4, leftMargin=MX, rightMargin=MX, topMargin=MT, bottomMargin=MB, title=data.title,
-                         author=data.prepared_by or "Tessaly", subject=f"Analysis of {data.dataset_name}", creator="Tessaly")
+                         author=data.prepared_by or "Vesper", subject=f"Analysis of {data.dataset_name}", creator="Vesper")
         self.data, self.fonts = data, fonts
         cover = PageTemplate("cover", [Frame(MX, MB, CW, PAGE_H - MB - MT, id="c", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=self._cover)
         body = PageTemplate("body", [Frame(MX, MB, CW, PAGE_H - MB - MT, id="b", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=self._page)

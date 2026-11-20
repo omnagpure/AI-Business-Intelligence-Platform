@@ -14,7 +14,7 @@ from ingestion.file_loader import fingerprint_bytes
 from storage import repository
 from ui import theme
 
-APP = str(Path(__file__).resolve().parent.parent / "tessaly_app.py")
+APP = str(Path(__file__).resolve().parent.parent / "vesper_app.py")
 PW = "Valid-pass-2024"
 
 
@@ -202,5 +202,5 @@ def test_app_py_mounts_the_cookie_routes_around_the_pages():
     import ast
     tree = ast.parse((Path(APP).parent / "app.py").read_text(encoding="utf-8"))
     src = ast.unparse(tree)
-    assert "st.App(" in src and "tessaly_app.py" in src and "SESSION_PATH" in src and "LOGOUT_PATH" in src
+    assert "st.App(" in src and "vesper_app.py" in src and "SESSION_PATH" in src and "LOGOUT_PATH" in src
     assert "from app import app" in (Path(APP).parent / "server.py").read_text(encoding="utf-8")

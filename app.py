@@ -1,9 +1,9 @@
-"""Entry point: the Streamlit app (tessaly_app.py) plus the session-cookie routes and security headers.
+"""Entry point: the Streamlit app (vesper_app.py) plus the session-cookie routes and security headers.
 
 Run:  streamlit run app.py        (server.py is kept as an alias)
 
 The routes set and clear the HttpOnly session cookie, so sign-in survives page reloads (including the reload that
-switches light/dark) and "Remember me" works. Running tessaly_app.py directly still works, but then sign-in lasts only
+switches light/dark) and "Remember me" works. Running vesper_app.py directly still works, but then sign-in lasts only
 for the open browser tab.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ class SecurityHeaders(BaseHTTPMiddleware):
 
 
 app = st.App(
-    Path(__file__).resolve().parent / "tessaly_app.py",
+    Path(__file__).resolve().parent / "vesper_app.py",
     routes=[Route(SESSION_PATH, session_route, methods=["GET"]), Route(LOGOUT_PATH, logout_route, methods=["GET"])],
     middleware=[Middleware(SecurityHeaders)],
 )

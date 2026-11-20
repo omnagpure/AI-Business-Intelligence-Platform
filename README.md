@@ -1,4 +1,4 @@
-# Tessaly
+# Vesper
 
 Business intelligence for operational datasets (formerly "AI Business Intelligence Platform").
 
@@ -41,7 +41,7 @@ streamlit run app.py
 ```
 Open http://localhost:8501. Visitors see the public homepage; **Get started** creates an account and opens the app.
 
-`app.py` wraps the pages (`tessaly_app.py`) with two HTTP routes that set and clear the HttpOnly session cookie, plus
+`app.py` wraps the pages (`vesper_app.py`) with two HTTP routes that set and clear the HttpOnly session cookie, plus
 security headers, so sign-in survives page reloads and "Remember me" works. `streamlit run server.py` is an alias.
 
 ## Accounts and data privacy

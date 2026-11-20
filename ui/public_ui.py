@@ -1,7 +1,7 @@
 """Design layer for the public pages (homepage, sign in, registration).
 
 Uses the same colour tokens as the app (ui.theme), so the public pages follow the light/dark choice too. Icons are line
-icons on a 24px grid drawn in currentColor; the logo is the Tessaly mark from assets/.
+icons on a 24px grid drawn in currentColor; the logo is the Vesper mark from assets/.
 """
 from __future__ import annotations
 

@@ -93,8 +93,8 @@ def switch_script(selector: str) -> str:
     delegated listener, so switches rendered after the script, or re-rendered by Streamlit, work too."""
     return f"""<script>
 (() => {{
-  if (window.__tessalyThemeSwitch) return;
-  window.__tessalyThemeSwitch = true;
+  if (window.__vesperThemeSwitch) return;
+  window.__vesperThemeSwitch = true;
   const paths = {json.dumps(_PATHS)};
   const names = {{light: "Light", dark: "Dark", system: "System"}};
   document.addEventListener("click", (ev) => {{

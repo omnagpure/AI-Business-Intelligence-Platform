@@ -7,7 +7,7 @@ from streamlit.testing.v1 import AppTest
 
 from ui import home_cards as hc
 
-APP = str(Path(__file__).resolve().parent.parent / "tessaly_app.py")
+APP = str(Path(__file__).resolve().parent.parent / "vesper_app.py")
 
 
 def _cards(html):

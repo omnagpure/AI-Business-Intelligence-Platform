@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 from auth import service
 
-APP = str(Path(__file__).resolve().parent.parent / "tessaly_app.py")
+APP = str(Path(__file__).resolve().parent.parent / "vesper_app.py")
 PW = "Valid-pass-2024"
 
 

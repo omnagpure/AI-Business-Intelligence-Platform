@@ -1,6 +1,6 @@
 """Design system: global CSS on top of the theme tokens, and the small set of shared UI helpers.
 
-Direction (Tessaly): warm neutral surfaces, hairline borders, one vermilion accent, Geist type, light and dark from
+Direction (Vesper): warm neutral surfaces, hairline borders, one vermilion accent, Geist type, light and dark from
 the same tokens (ui.theme). Pages use these helpers rather than ad-hoc CSS.
 """
 from __future__ import annotations

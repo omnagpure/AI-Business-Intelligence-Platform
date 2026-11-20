@@ -53,7 +53,7 @@ def _requested_path() -> str:
 def public_app() -> None:
     """Homepage, sign in and registration. Nothing here reads user data."""
     pages = {
-        "landing": st.Page(render_landing_page, title="Tessaly · Business intelligence", url_path="home", icon=":material/insights:", default=True),
+        "landing": st.Page(render_landing_page, title="Vesper · Business intelligence", url_path="home", icon=":material/insights:", default=True),
         "login": st.Page(render_login_page, title="Sign in", url_path="login", icon=":material/login:"),
         "register": st.Page(render_register_page, title="Create account", url_path="register", icon=":material/person_add:"),
     }

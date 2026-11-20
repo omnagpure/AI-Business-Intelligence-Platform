@@ -1,4 +1,4 @@
-# Tessaly theme. Shared settings on [theme]; colours per appearance on [theme.light] / [theme.dark].
+# Vesper theme. Shared settings on [theme]; colours per appearance on [theme.light] / [theme.dark].
 # Keep these colours in step with the tokens in ui/theme.py.
 [theme]
 font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap, sans-serif"

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
-APP = str(Path(__file__).resolve().parent.parent / "tessaly_app.py")
+APP = str(Path(__file__).resolve().parent.parent / "vesper_app.py")
 
 
 def test_app_starts_with_empty_state():
