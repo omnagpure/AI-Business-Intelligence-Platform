@@ -52,19 +52,19 @@ def test_lead_time_view_reports_median_and_p90():
 
 def stock_df():
     d = pd.to_datetime(["2024-01-01"] * 2 + ["2024-01-02"] * 2 + ["2024-01-03"] * 2)
-    return pd.DataFrame({"date": d, "sku": ["A", "B"] * 3, "inventory_level": [10, 10, 4, 4, 30, 30],
+    # day 2: A is far above its reorder point and B below it; summed stock (14) is above summed reorder points (10)
+    return pd.DataFrame({"date": d, "sku": ["A", "B"] * 3, "inventory_level": [10, 10, 12, 2, 30, 30],
                          "reorder_point": [5, 5, 5, 5, 5, 5]})
 
 
 STOCK_ROLES = {"date": "datetime", "sku": "product", "inventory_level": "quantity", "reorder_point": "quantity"}
 
 
-def test_stock_vs_reorder_sums_items_per_date():
+def test_stock_vs_reorder_counts_items_below_their_own_reorder_point():
     v = views(stock_df(), STOCK_ROLES)["stock_vs_reorder"]
-    # totals: 20/10, 8/10, 60/10 -> below on 1 of 3 dates; latest 60 against 10
-    assert v.kind == "lines" and list(v.data["stock"]) == [20, 8, 60]
-    assert "below the reorder points on 1 of 3 dates (33.3%)" in v.caption
-    assert "60 against 10" in v.caption
+    assert v.kind == "line" and list(v.data["share"]) == [0.0, 50.0, 0.0]      # a sum would have shown no shortage
+    assert "0 of 2 items (0.0%)" in v.caption and "highest 50.0% on 2024-01-02" in v.caption
+    assert v.unit == "%"
 
 
 def test_defect_rate_over_time_uses_totals_per_period():

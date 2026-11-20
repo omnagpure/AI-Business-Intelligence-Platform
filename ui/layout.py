@@ -78,6 +78,50 @@ div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid
   padding:1rem 1.1rem .8rem; box-shadow:var(--shadow); height:100%; transition:border-color .15s ease;}
 .st-key-kpi_grid [data-testid="stMetric"]:hover {border-color:var(--line-2);}
 
+/* dashboard: header meta, section titles, data-check callout */
+.dash-meta {display:flex; align-items:center; flex-wrap:wrap; gap:.45rem; font-size:.8125rem; color:var(--muted); margin:-.35rem 0 .35rem;}
+.dash-sep {color:var(--line-2);}
+.dash-faint {color:var(--faint);}
+.dash-sec {display:flex; align-items:baseline; gap:.75rem; flex-wrap:wrap; margin:1.6rem 0 .7rem;}
+.dash-sec-t {font-size:.75rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text);}
+.dash-sec-note {font-size:.78rem; color:var(--faint);}
+.dash-callout {border:1px solid var(--warn); border-left-width:3px; background:var(--warn-soft); border-radius:var(--r);
+  padding:.7rem .95rem; font-size:.84rem; line-height:1.5; color:var(--text); margin:.6rem 0 .2rem;}
+.dash-callout-t {font-weight:600; color:var(--warn); margin-right:.5rem;}
+
+/* KPI cards: value, change chip, sparkline, footnote */
+.kpi-grid {display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.85rem;}
+.kpi {background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:.95rem 1.05rem .75rem;
+  box-shadow:var(--shadow); display:flex; flex-direction:column; min-height:172px; transition:border-color .15s, transform .15s;}
+.kpi:hover {border-color:var(--accent-line); transform:translateY(-1px);}
+.kpi-label {font-size:.78rem; font-weight:500; color:var(--muted); line-height:1.3; min-height:2.05em;}
+.kpi-value {font-size:1.7rem; font-weight:650; letter-spacing:-.02em; color:var(--text); line-height:1.15; margin:.2rem 0 .35rem;
+  font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+.kpi-delta {display:flex; align-items:center; gap:.45rem; flex-wrap:wrap; min-height:1.35rem; font-size:.74rem;}
+.kpi-vs {color:var(--faint);}
+.chip {display:inline-flex; align-items:center; gap:.2rem; border-radius:999px; padding:.08rem .5rem; font-size:.72rem; font-weight:600;
+  font-variant-numeric:tabular-nums; white-space:nowrap;}
+.chip.good {color:var(--ok); background:var(--ok-soft);}
+.chip.bad {color:var(--danger); background:var(--danger-soft);}
+.chip.flat {color:var(--muted); background:var(--surface-2);}
+.kpi-spark {position:relative; width:100%; height:40px; margin-top:auto;}
+.kpi-spark-empty {margin-top:auto; height:40px;}
+.kpi-area, .kpi-line {position:absolute; inset:0; -webkit-mask-size:100% 100%; mask-size:100% 100%;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;}
+.kpi-area {background:linear-gradient(to bottom, var(--accent-line), transparent); opacity:.55;}
+.kpi-line {background:var(--accent);}
+.kpi-foot {font-size:.7rem; color:var(--faint); margin-top:.4rem; border-top:1px dashed var(--line); padding-top:.4rem;}
+.kpi-groups {display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:.85rem;}
+.kpi-group {background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:.8rem 1rem;}
+.kpi-group-t {font-size:.7rem; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--faint); margin-bottom:.5rem;}
+.kpi-mini-grid {display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:.6rem 1rem;}
+.kpi-mini .kpi-label {min-height:0; font-size:.74rem;}
+.kpi-mini-v {font-size:1.02rem; font-weight:600; color:var(--text); font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+.view-insight {font-size:.82rem; line-height:1.5; color:var(--muted); border-top:1px solid var(--line); padding-top:.55rem; margin-top:.1rem;}
+[class*="st-key-view_"] {background:var(--surface); border-radius:var(--r-lg) !important;}
+@media (max-width: 1100px) {.kpi-grid {grid-template-columns:repeat(2, minmax(0, 1fr));}}
+@media (max-width: 560px) {.kpi-grid {grid-template-columns:1fr;}}
+
 /* tabs */
 button[data-baseweb="tab"] {font-size:.875rem; font-weight:500; color:var(--muted); padding:.55rem .95rem; height:auto;}
 button[data-baseweb="tab"][aria-selected="true"] {color:var(--text); font-weight:600;}

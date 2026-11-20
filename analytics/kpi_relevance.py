@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from analytics.kpis import OK, KPIReport, KPIResult
 
 SUPPLY_GROUPS = frozenset({"Supply chain", "Procurement"})
-SUPPLY_ORDER = ("on_time_rate", "otif", "fill_rate", "avg_lead_time", "avg_delay", "stockout_rate",
+SUPPLY_ORDER = ("on_time_rate", "otif", "fill_rate", "avg_lead_time", "avg_late_delay", "cancel_rate", "avg_delay", "stockout_rate",
                 "below_reorder_share", "days_of_cover", "inventory_turnover", "defect_rate",
                 "supplier_top_share", "supplier_top3_share", "total_spend", "spend_growth", "avg_po_value",
                 "stock_units", "stock_value", "reorder_candidates", "order_count", "units",

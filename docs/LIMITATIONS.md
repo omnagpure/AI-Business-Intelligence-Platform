@@ -32,6 +32,15 @@
 - Columns whose names suggest personal data (email, phone, password, ...) are excluded from role detection.
 - The Overview page reports counts and detected roles only. KPIs, charts of results and insights arrive in Phase 5+.
 
+## Dashboard
+- Card changes compare the last two complete periods only; one month is a small sample for rates on small data.
+- The data-shape check looks for one lasting change near the end of the data (rows per period, rows per order); it does
+  not say why the data changed, and changes in the middle of a long history are not reported.
+- Cancelled shipments are recognised from a status column whose values contain a cancelled word; other ways of
+  recording a cancellation (a separate flag, a zero quantity) are not.
+- Supplier concentration and stock levels are shown without a good or bad colour, since the right level depends on the
+  business.
+
 ## Accounts and authentication
 - No email service: there is no self-service password reset or email verification. Administrators reset passwords
   with `python -m scripts.reset_password`.

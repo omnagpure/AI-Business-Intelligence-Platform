@@ -11,6 +11,8 @@ def format_value(value: float | None, unit: str) -> str:
         return f"{value:,.1f}%"
     if unit == "count":
         return f"{value:,.0f}"
+    if unit == "days":
+        return f"{value:,.1f} days" if abs(value) < 1000 else f"{value:,.0f} days"
     a = abs(value)
     for limit, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M")):
         if a >= limit:

@@ -11,7 +11,7 @@ import pandas as pd
 
 from analytics.descriptive import aggregate_time, top_n_with_other
 from analytics.kpis import DataFilter, _Ctx, _category, _revenue, _stock, _units, primary_date_column
-from analytics.supply_chain_kpis import (DEFECT_WORDS, SC, _cols, _on_time, _reorder, _status, lead_days,
+from analytics.supply_chain_kpis import (DEFECT_WORDS, SC, _cols, _on_time, _reorder, _status, lead_days, lead_label,
                                           supplier_shares)
 from config.analytics_config import DEFAULT_ANALYTICS, AnalyticsConfig
 from core.logging_config import get_logger
@@ -22,6 +22,9 @@ MIN_GROUP_ROWS = 10
 MIN_GROUP_ROWS_SMALL = 5
 MAX_SUPPLIER_GROUPS = 1000      # a supplier column may have many values; only the lowest 10 are drawn
 GROUP_HINT = frozenset({"supplier", "vendor", "mode", "shipping", "shipment", "carrier", "method", "warehouse"})
+PLACE_HINT = frozenset({"market", "region", "country", "zone", "territory", "state"})
+MAX_PLACE_GROUPS = 12
+SMALL_SPREAD_PTS = 2.0      # best minus worst group below this: the grouping does not matter
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,8 @@ class SuggestedView:
     y: tuple[str, ...]             # value column(s)
     caption: str
     columns: tuple[str, ...]       # source columns, for transparency
+    ref: float | None = None       # reference value drawn on the chart (for example the overall rate)
+    unit: str = ""                 # "%" or "days" for value labels
 
 
 def _group_col(ctx: _Ctx, min_rows_per_group: float = 3.0) -> str | None:
@@ -50,10 +55,10 @@ def _group_col(ctx: _Ctx, min_rows_per_group: float = 3.0) -> str | None:
     return cands[0][2] if cands else None
 
 
-def _on_time_by_group(ctx: _Ctx) -> SuggestedView | None:
+def _on_time_rates(ctx: _Ctx, g: str):
+    """(rates per group with at least `floor` rows sorted lowest first, overall rate, floor, columns) or None."""
     on, _, cols, _, _, _ = _on_time(ctx)
-    g = _group_col(ctx)
-    if on is None or g is None:
+    if on is None:
         return None
     f = pd.DataFrame({"g": ctx.df[g].astype("string"), "on": on}).dropna()
     if f.empty:
@@ -66,14 +71,47 @@ def _on_time_by_group(ctx: _Ctx) -> SuggestedView | None:
             break
     else:
         return None
-    low = kept.sort_values("rate")
+    return kept.sort_values("rate"), 100 * f["on"].mean(), floor, cols
+
+
+def _on_time_view(ctx: _Ctx, g: str, key: str) -> SuggestedView | None:
+    res = _on_time_rates(ctx, g)
+    if res is None:
+        return None
+    low, overall, floor, cols = res
     shown = low.head(10).reset_index().rename(columns={"g": "label", "rate": "value"})
-    overall = 100 * f["on"].mean()
     worst, best = low.iloc[0], low.iloc[-1]
-    cap = (f"{low.index[0]} has the lowest on-time rate ({worst['rate']:.1f}% of {int(worst['rows']):,} rows) against "
-           f"{overall:.1f}% overall; the best is {low.index[-1]} ({best['rate']:.1f}%). Groups with at least {floor} rows.")
-    return SuggestedView("on_time_by_group", f"Lowest on-time rate by {g}", "bar", shown[["label", "value", "rows"]],
-                         "label", ("value",), cap, tuple(cols + [g]))
+    more = f" The {len(low) - 10} other groups are not drawn." if len(low) > 10 else ""
+    if best["rate"] - worst["rate"] < SMALL_SPREAD_PTS:
+        cap = (f"On-time rates hardly differ by {g}: from {worst['rate']:.1f}% ({low.index[0]}) to {best['rate']:.1f}% "
+               f"({low.index[-1]}) against {overall:.1f}% overall, so {g} does not explain late deliveries. "
+               f"Groups with at least {floor} rows.{more}")
+    else:
+        cap = (f"{low.index[0]} has the lowest on-time rate ({worst['rate']:.1f}% of {int(worst['rows']):,} rows) against "
+               f"{overall:.1f}% overall; the best is {low.index[-1]} ({best['rate']:.1f}%). Groups with at least {floor} rows.{more}")
+    title = f"On-time rate by {g}" if len(low) <= 10 else f"Lowest on-time rates by {g}"
+    return SuggestedView(key, title, "bar", shown[["label", "value", "rows"]], "label", ("value",), cap,
+                         tuple(cols + [g]), ref=overall, unit="%")
+
+
+def _on_time_by_group(ctx: _Ctx) -> SuggestedView | None:
+    g = _group_col(ctx)
+    return None if g is None else _on_time_view(ctx, g, "on_time_by_group")
+
+
+def _place_col(ctx: _Ctx, exclude: str | None) -> str | None:
+    """A location column with a handful of values (market, region) to compare on-time rates across places."""
+    cands = []
+    for c in ctx.rank("location", numeric=False):
+        n = ctx.df[c].nunique(dropna=True)
+        if c != exclude and 3 <= n <= MAX_PLACE_GROUPS and len(ctx.df) / n >= MIN_GROUP_ROWS:
+            cands.append((-bool(ctx.tokens(c) & PLACE_HINT), n, c))
+    return sorted(cands)[0][2] if cands else None
+
+
+def _on_time_by_place(ctx: _Ctx) -> SuggestedView | None:
+    g = _place_col(ctx, _group_col(ctx))
+    return None if g is None else _on_time_view(ctx, g, "on_time_by_place")
 
 
 def _lead_time_distribution(ctx: _Ctx) -> SuggestedView | None:
@@ -81,27 +119,40 @@ def _lead_time_distribution(ctx: _Ctx) -> SuggestedView | None:
     if d is None or len(d) < 5:
         return None
     p50, p90 = float(d.median()), float(d.quantile(0.9))
-    cap = f"Median lead time is {p50:.1f} days and 90% of rows arrive within {p90:.1f} days ({len(d):,} rows)."
-    return SuggestedView("lead_time", "Lead time distribution (days)", "histogram", pd.DataFrame({"days": d.to_numpy()}),
-                         "days", ("days",), cap, tuple(cols))
+    what = lead_label(cols)
+    verb = "ship" if what == "shipping time" else "arrive"
+    cap = f"Median {what} is {p50:.1f} days and 90% of rows {verb} within {p90:.1f} days ({len(d):,} rows)."
+    return SuggestedView("lead_time", f"{what.capitalize()} distribution (days)", "histogram",
+                         pd.DataFrame({"days": d.to_numpy()}), "days", ("days",), cap, tuple(cols), unit="days")
 
 
 def _stock_vs_reorder(ctx: _Ctx) -> SuggestedView | None:
+    """Share of stock records (item x location on a date) below their own reorder point, per date.
+    Comparing summed stock with summed reorder points would hide shortages: one item far above its reorder point
+    cancels out another below it."""
     stock, rp, date = _stock(ctx), _reorder(ctx), primary_date_column(ctx.df, ctx.model)
     if None in (stock, rp, date):
         return None
-    f = pd.DataFrame({"date": ctx.dt(date).dt.normalize(), "stock": ctx.num(stock), "reorder_point": ctx.num(rp)}).dropna()
-    per = f.groupby("date")[["stock", "reorder_point"]].sum()
+    f = pd.DataFrame({"date": ctx.dt(date).dt.normalize(), "s": ctx.num(stock), "r": ctx.num(rp)}).dropna()
+    if f.empty:
+        return None
+    f["below"] = f["s"] < f["r"]
+    per = f.groupby("date")["below"].agg(share=lambda b: 100 * b.mean(), below="sum", items="size")
     if len(per) < 2:
         return None
-    below = per["stock"] < per["reorder_point"]
+    span = (per.index.max() - per.index.min()).days
+    if span >= 120:                                   # daily points are noisy over a long period: weekly averages
+        plot = per["share"].resample("W").mean().dropna().rename_axis("date").reset_index()
+        grain = "weekly average"
+    else:
+        plot = per["share"].rename_axis("date").reset_index()
+        grain = "daily"
     last = per.iloc[-1]
-    cap = (f"Summed over all items, stock was below the reorder points on {int(below.sum()):,} of {len(per):,} dates "
-           f"({100 * below.mean():.1f}%); on the latest date it was {last['stock']:,.0f} against {last['reorder_point']:,.0f}.")
-    plot = per if len(per) <= 150 else per.resample("W").mean().dropna()
-    plot = plot.reset_index()
-    return SuggestedView("stock_vs_reorder", "Stock vs reorder point over time", "lines", plot, "date",
-                         ("stock", "reorder_point"), cap, (stock, rp, date))
+    cap = (f"On the latest date ({per.index[-1]:%Y-%m-%d}), {int(last['below']):,} of {int(last['items']):,} items "
+           f"({last['share']:.1f}%) were below their reorder point; {per['share'].mean():.1f}% on an average date, "
+           f"highest {per['share'].max():.1f}% on {per['share'].idxmax():%Y-%m-%d}. Chart shows the {grain}.")
+    return SuggestedView("stock_vs_reorder", "Items below reorder point", "line", plot, "date", ("share",), cap,
+                         (stock, rp, date), ref=float(per["share"].mean()), unit="%")
 
 
 def _defect_cols(ctx: _Ctx) -> tuple[str | None, str | None]:
@@ -162,7 +213,8 @@ def _supplier_share(ctx: _Ctx) -> SuggestedView | None:
     t = pd.DataFrame({"label": shown.index.astype(str), "value": 100 * shown.to_numpy() / g.sum()})
     cap = (f"{g.index[0]} accounts for {share.iloc[0]:.1f}% of {label}; the top 3 of {len(g):,} suppliers account for "
            f"{share.iloc[:3].sum():.1f}%.")
-    return SuggestedView("supplier_share", f"Share of {label} by supplier", "bar", t, "label", ("value",), cap, tuple(cols))
+    return SuggestedView("supplier_share", f"Share of {label} by supplier", "bar", t, "label", ("value",), cap, tuple(cols),
+                         unit="%")
 
 
 def _measure(ctx: _Ctx):
@@ -206,16 +258,19 @@ def _category_share(ctx: _Ctx) -> SuggestedView | None:
     shown = top_n_with_other(g, ctx.config.top_n)
     t = pd.DataFrame({"label": shown.index.astype(str), "value": 100 * shown.to_numpy() / g.sum()})
     cap = f"{g.index[0]} is the largest {cat}, with {100 * g.iloc[0] / g.sum():.1f}% of {name} across {len(g):,} values."
-    return SuggestedView("category_share", f"Share of {name} by {cat}", "bar", t, "label", ("value",), cap, (name, cat))
+    return SuggestedView("category_share", f"Share of {name} by {cat}", "bar", t, "label", ("value",), cap, (name, cat),
+                         unit="%")
 
 
-SUPPLY_VIEWS = (_on_time_by_group, _lead_time_distribution, _stock_vs_reorder, _defects, _supplier_share)
+SUPPLY_VIEWS = (_on_time_by_group, _on_time_by_place, _lead_time_distribution, _stock_vs_reorder, _defects, _supplier_share)
 GENERAL_VIEWS = (_trend, _category_share)
 
 
 def suggest_views(df: pd.DataFrame, model: SemanticModel, config: AnalyticsConfig = DEFAULT_ANALYTICS,
-                  data_filter: DataFilter | None = None, max_views: int = 4) -> tuple[SuggestedView, ...]:
-    """Up to `max_views` views chosen from the roles present. Supply-chain views first, then general ones."""
+                  data_filter: DataFilter | None = None, max_views: int = 4,
+                  skip: tuple[str, ...] = ()) -> tuple[SuggestedView, ...]:
+    """Up to `max_views` views chosen from the roles present. Supply-chain views first, then general ones.
+    `skip` names view keys the caller already shows another way (the dashboard has its own trend chart)."""
     flt = data_filter or DataFilter()
     d = flt.apply(df)
     if len(d) == 0:
@@ -230,6 +285,6 @@ def suggest_views(df: pd.DataFrame, model: SemanticModel, config: AnalyticsConfi
         except Exception:
             log.exception("Suggested view %s failed", fn.__name__)
             continue
-        if v is not None:
+        if v is not None and v.key not in skip:
             out.append(v)
     return tuple(out)

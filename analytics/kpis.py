@@ -44,6 +44,9 @@ NOT_ORDER_TOKENS = frozenset({"item", "line", "product", "category", "customer",
 CUSTOMER_ID_TOKENS = frozenset({"id", "number", "no", "code", "key", "ref"})
 CUSTOMER_NAME_TOKENS = frozenset({"fname", "lname", "first", "last", "street", "city", "name"})
 CATEGORY_PREFER = ("category", "segment", "department", "class", "group", "type")
+# Stock KPIs read the latest date only; the names say so, because other stock KPIs cover every date.
+STOCK_ON_HAND, STOCK_VALUE = "Stock on hand (latest date)", "Stock value (latest date)"
+BELOW_REORDER_NOW = "Items below reorder point (latest date)"
 
 
 # ---- result types -----------------------------------------------------------------------------
@@ -538,8 +541,8 @@ def _k_inventory(ctx: _Ctx) -> list[KPIResult]:
     stock = _stock(ctx)
     if stock is None:
         return [ctx.skipped(k, n, "Inventory", u, "No stock-on-hand quantity column (inventory, stock or level) found.")
-                for k, n, u in (("stock_units", "Stock on hand", "count"), ("stock_value", "Stock value", "amount"),
-                                ("reorder_candidates", "Rows below reorder point", "count"))]
+                for k, n, u in (("stock_units", STOCK_ON_HAND, "count"), ("stock_value", STOCK_VALUE, "amount"),
+                                ("reorder_candidates", BELOW_REORDER_NOW, "count"))]
     date = primary_date_column(ctx.df, ctx.model)
     mask = pd.Series(True, index=ctx.df.index)
     snap_note = "No date column: every row is treated as a separate stock position."
@@ -551,31 +554,31 @@ def _k_inventory(ctx: _Ctx) -> list[KPIResult]:
     qty = ctx.num(stock)[mask]
     cols = [stock] + ([date] if date else [])
     notes = ctx.col_notes(stock) + [snap_note]
-    out = [ctx.result("stock_units", "Stock on hand", "Inventory", qty.sum(min_count=1), "count",
+    out = [ctx.result("stock_units", STOCK_ON_HAND, "Inventory", qty.sum(min_count=1), "count",
                       f"SUM({stock}) at latest snapshot", cols, notes,
                       breakdown=tuple((k, float(v)) for k, v in zip(
                           ("min", "25%", "median", "75%", "max"),
                           qty.quantile([0, .25, .5, .75, 1]).tolist()))) if qty.notna().any() else
-           ctx.not_calculable("stock_units", "Stock on hand", "Inventory", "count", f"SUM({stock})", cols,
+           ctx.not_calculable("stock_units", STOCK_ON_HAND, "Inventory", "count", f"SUM({stock})", cols,
                               "no stock values in the latest snapshot")]
     costs = [c for c in ctx.rank("cost") if not (ctx.tokens(c) & TOTAL_TOKENS)]
     unit_costs = [c for c in costs if ctx.tokens(c) & UNIT_COST_TOKENS] or costs
     if not unit_costs:
-        out.append(ctx.skipped("stock_value", "Stock value", "Inventory", "amount", "Needs a unit cost column."))
+        out.append(ctx.skipped("stock_value", STOCK_VALUE, "Inventory", "amount", "Needs a unit cost column."))
     else:
         cc = unit_costs[0]
         val = (ctx.num(stock) * ctx.num(cc))[mask]
-        out.append(ctx.result("stock_value", "Stock value", "Inventory", val.sum(min_count=1), "amount",
+        out.append(ctx.result("stock_value", STOCK_VALUE, "Inventory", val.sum(min_count=1), "amount",
                               f"SUM({stock} x {cc}) at latest snapshot", cols + [cc],
                               notes + [f"'{cc}' is assumed to be a cost per unit."] + ctx.col_notes(cc)))
     rp = [c for c in ctx.rank("quantity", prefer=REORDER_TOKENS) if ctx.tokens(c) & REORDER_TOKENS]
     if not rp:
-        out.append(ctx.skipped("reorder_candidates", "Rows below reorder point", "Inventory", "count",
+        out.append(ctx.skipped("reorder_candidates", BELOW_REORDER_NOW, "Inventory", "count",
                                "No reorder-point column found."))
     else:
         both = ctx.num(stock).notna() & ctx.num(rp[0]).notna() & mask
         below = int((ctx.num(stock)[both] < ctx.num(rp[0])[both]).sum())
-        out.append(ctx.result("reorder_candidates", "Rows below reorder point", "Inventory", below, "count",
+        out.append(ctx.result("reorder_candidates", BELOW_REORDER_NOW, "Inventory", below, "count",
                               f"COUNT({stock} < {rp[0]}) at latest snapshot", cols + [rp[0]],
                               notes + [f"{int(both.sum()):,} rows in the snapshot were compared."]))
     return out

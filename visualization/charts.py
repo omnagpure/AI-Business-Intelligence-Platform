@@ -63,12 +63,33 @@ def apply_theme(fig, appearance: str):
     return fig
 
 
+def readable(name: object) -> str:
+    """'Units_Sold' -> 'Units Sold', 'order_value' -> 'Order value': column names as people read them in a chart."""
+    text = str(name).replace("_", " ").strip()
+    return text[:1].upper() + text[1:] if text.islower() else text
+
+
+def value_text(v: float, unit: str = "") -> str:
+    """Label printed on a bar."""
+    if unit == "%":
+        return f"{v:,.1f}%"
+    if unit == "days":
+        return f"{v:,.1f} d"
+    a = abs(v)
+    for limit, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
+        if a >= limit:
+            return f"{v / limit:,.1f}{suffix}"
+    return f"{v:,.0f}" if a >= 100 else f"{v:,.1f}"
+
+
 def _style(fig, title: str, x_title: str = "", y_title: str = "", height: int = 360):
+    title, x_title, y_title = readable(title) if title else title, readable(x_title), readable(y_title)
     fig.update_layout(
         title=dict(text=title, x=0, xanchor="left", font=dict(size=14, color=TEXT)),
         template="plotly_white", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=TEXT, size=12), colorway=PALETTE, height=height,
         margin=dict(l=10, r=10, t=48, b=10), legend=dict(orientation="h", y=-0.2, font=dict(color=MUTED)),
+        hoverlabel=dict(font_size=12), bargap=0.32,
     )
     fig.update_xaxes(title_text=x_title, gridcolor=GRID, zeroline=False, automargin=True)
     fig.update_yaxes(title_text=y_title, gridcolor=GRID, zeroline=False, automargin=True)
@@ -90,9 +111,31 @@ def line_chart(df: pd.DataFrame, x: str, y: str, title: str, y_title: str = "", 
     if partial is not None:
         p = partial.reindex(f.index).fillna(False).astype(bool)
         if p.any():
-            fig.add_trace(go.Scatter(x=f.loc[p, x], y=f.loc[p, y], mode="markers", name="Partial period",
-                                     marker=dict(symbol="x", size=11, color=PALETTE[2])))
+            fig.add_trace(go.Scatter(x=f.loc[p, x], y=f.loc[p, y], mode="markers", name="Partial period (not complete)",
+                                     marker=dict(symbol="circle-open", size=11, color=MUTED, line=dict(width=2))))
     return _style(fig, title, x_title, y_title or y)
+
+
+def view_line(df: pd.DataFrame, x: str, y: str, title: str, y_title: str = "", ref: float | None = None,
+              ref_label: str = "Average", percent: bool = False):
+    """A single series with a soft area and an optional dashed reference line (for suggested views)."""
+    import plotly.graph_objects as go
+    f = df[[x, y]].copy()
+    f[y] = numeric_series(f[y])
+    f = f.dropna()
+    if f.empty:
+        return None
+    fig = go.Figure(go.Scatter(x=f[x], y=f[y], mode="lines", name=readable(y_title or y),
+                               line=dict(color=PALETTE[0], width=2), fill="tozeroy", fillcolor="rgba(217,84,30,0.10)",
+                               hovertemplate="%{x|%Y-%m-%d}: %{y:,.1f}" + ("%" if percent else "") + "<extra></extra>"))
+    if ref is not None:
+        fig.add_hline(y=ref, line=dict(color=MUTED, width=1, dash="dash"),
+                      annotation_text=f"{ref_label} {ref:,.1f}{'%' if percent else ''}", annotation_position="top left",
+                      annotation_font=dict(color=MUTED, size=11))
+    _style(fig, title, "", y_title)
+    if percent:
+        fig.update_yaxes(ticksuffix="%", rangemode="tozero")
+    return fig
 
 
 def multi_line_chart(df: pd.DataFrame, x: str, ys: tuple[str, ...] | list[str], title: str, y_title: str = ""):
@@ -110,8 +153,10 @@ def multi_line_chart(df: pd.DataFrame, x: str, ys: tuple[str, ...] | list[str], 
     return _style(fig, title, "", y_title)
 
 
-def bar_chart(table: pd.DataFrame, label: str, value: str, title: str, y_title: str = "", horizontal: bool = True):
-    """Bars from an already-aggregated table (use bin_categories first for raw categories)."""
+def bar_chart(table: pd.DataFrame, label: str, value: str, title: str, y_title: str = "", horizontal: bool = True,
+              unit: str = "", ref: float | None = None, ref_label: str = "Overall"):
+    """Bars from an already-aggregated table (use bin_categories first for raw categories). Each bar carries its value
+    as a label (`unit` "%" or "days" picks the format); `ref` draws a dashed reference line such as the overall rate."""
     import plotly.graph_objects as go
     t = table[[label, value]].copy()
     t[value] = numeric_series(t[value])
@@ -122,13 +167,28 @@ def bar_chart(table: pd.DataFrame, label: str, value: str, title: str, y_title: 
         b = bin_categories(t[label], t[value], 10)
         t = b.rename(columns={"label": label, "value": value})
     colors = [MUTED if str(l) == OTHER_LABEL else PALETTE[0] for l in t[label]]
+    text = [value_text(float(v), unit) for v in t[value]]
     if horizontal:
-        fig = go.Figure(go.Bar(x=t[value], y=t[label].astype(str), orientation="h", marker_color=colors))
+        fig = go.Figure(go.Bar(x=t[value], y=t[label].astype(str), orientation="h", marker_color=colors, text=text,
+                               textposition="outside", cliponaxis=False, textfont=dict(size=11),
+                               hovertemplate="%{y}: %{text}<extra></extra>"))
         fig.update_yaxes(autorange="reversed")
         _style(fig, title, y_title or value, "", height=max(260, 30 * len(t) + 110))
+        hi = float(max(t[value].max(), ref or 0))
+        fig.update_xaxes(range=[min(0.0, float(t[value].min()) * 1.15), hi * 1.18 if hi > 0 else 1])
+        fig.update_layout(margin=dict(l=10, r=28, t=48, b=10))
+        if ref is not None:
+            fig.add_vline(x=ref, line=dict(color=MUTED, width=1, dash="dash"))
+            fig.add_annotation(x=ref, y=1.0, yref="paper", yanchor="bottom", showarrow=False,
+                               text=f"{ref_label} {value_text(ref, unit)}", font=dict(color=MUTED, size=11))
     else:
-        fig = go.Figure(go.Bar(x=t[label].astype(str), y=t[value], marker_color=colors))
+        fig = go.Figure(go.Bar(x=t[label].astype(str), y=t[value], marker_color=colors, text=text, textposition="outside",
+                               cliponaxis=False, textfont=dict(size=11)))
         _style(fig, title, "", y_title or value)
+        if ref is not None:
+            fig.add_hline(y=ref, line=dict(color=MUTED, width=1, dash="dash"))
+    if unit == "%":
+        (fig.update_xaxes if horizontal else fig.update_yaxes)(ticksuffix="%")
     return fig
 
 
@@ -147,12 +207,25 @@ def share_chart(table: pd.DataFrame, label: str, value: str, title: str):
     return _style(fig, title)
 
 
-def histogram(values: pd.Series, title: str, x_title: str = "", bins: int = 30):
+def histogram(values: pd.Series, title: str, x_title: str = "", bins: int = 30, marks: dict[str, float] | None = None):
+    """Distribution. Whole-number data with few distinct values gets one bar per value (no empty gaps between them).
+    `marks` draws labelled dashed lines, for example {"Median": 3.0, "90th percentile": 5.0}."""
     import plotly.graph_objects as go
     v = numeric_series(values).dropna()
     if v.empty:
         return None
-    fig = go.Figure(go.Histogram(x=v, nbinsx=bins, marker_color=PALETTE[0]))
+    if (v % 1 == 0).all() and v.nunique() <= 40:
+        counts = v.value_counts().sort_index()
+        fig = go.Figure(go.Bar(x=counts.index, y=counts.to_numpy(), marker_color=PALETTE[0],
+                               hovertemplate="%{x}: %{y:,} rows<extra></extra>"))
+        fig.update_xaxes(dtick=1 if counts.index.max() - counts.index.min() <= 20 else None)
+    else:
+        fig = go.Figure(go.Histogram(x=v, nbinsx=bins, marker_color=PALETTE[0]))
+    for i, (name, x) in enumerate((marks or {}).items()):     # labels sit left of their line, stacked so they never overlap
+        fig.add_vline(x=x, line=dict(color=MUTED, width=1, dash="dash"))
+        fig.add_annotation(x=x, y=1.0 + 0.06 * i, yref="paper", yanchor="bottom", xanchor="right",
+                           showarrow=False, text=f" {name} {x:,.1f} ", font=dict(color=MUTED, size=11),
+                           bgcolor="rgba(0,0,0,0)")
     return _style(fig, title, x_title or str(values.name or ""), "Rows")
 
 

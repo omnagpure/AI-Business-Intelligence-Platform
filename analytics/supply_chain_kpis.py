@@ -44,14 +44,34 @@ def _is_on_time_name(t: set[str]) -> bool:
     return ({"on", "time"} <= t) or bool(t & {"ontime", "otd"})
 
 
-def _status(ctx: _Ctx) -> tuple[pd.Series | None, pd.Series | None, str | None]:
-    """(cancelled mask, open mask, column) from a status column; (None, None, None) when absent."""
-    for col in ctx.rank("category", numeric=False):
-        if "status" not in ctx.tokens(col):
+SHIPPING_WORDS = frozenset({"delivery", "shipping", "shipment", "dispatch", "fulfilment", "fulfillment"})
+
+
+def _value_words(v: pd.Series) -> pd.Series:
+    """'Shipping canceled' -> 'shipping canceled'; 'PENDING_PAYMENT' -> 'pending payment' (padded for word matching)."""
+    return " " + v.astype("string").str.lower().str.replace(r"[^a-z0-9]+", " ", regex=True).str.strip() + " "
+
+
+def _has_word(words: pd.Series, vocab: frozenset[str]) -> pd.Series:
+    pattern = "|".join(f" {w.replace('_', ' ')} " for w in sorted(vocab))
+    return words.str.contains(pattern, regex=True).fillna(False).astype(bool)
+
+
+def _status(ctx: _Ctx, prefer: frozenset[str] = frozenset()) -> tuple[pd.Series | None, pd.Series | None, str | None]:
+    """(cancelled mask, open mask, column) from a status column; (None, None, None) when absent.
+    A value counts when it contains a cancelled or open word ("Shipping canceled", "PENDING_PAYMENT"). Columns whose
+    name contains a `prefer` word are tried first (the delivery status for delivery KPIs)."""
+    cols = [c for c in ctx.rank("category", numeric=False) if "status" in ctx.tokens(c)]
+    cols.sort(key=lambda c: not (ctx.tokens(c) & prefer))
+    for col in cols:
+        uniq = pd.Series(ctx.df[col].dropna().unique())
+        if uniq.empty:
             continue
-        v = ctx.df[col].astype("string").str.strip().str.lower()
-        if set(v.dropna().unique()) & (CANCELLED | OPEN):
-            return v.isin(CANCELLED).fillna(False), v.isin(OPEN).fillna(False), col
+        uw = _value_words(uniq)
+        if not (_has_word(uw, CANCELLED).any() or _has_word(uw, OPEN).any()):
+            continue
+        words = _value_words(ctx.df[col])
+        return _has_word(words, CANCELLED), _has_word(words, OPEN), col
     return None, None, None
 
 
@@ -63,7 +83,24 @@ def is_procurement(ctx: _Ctx) -> bool:
 
 # ---- on-time outcome (shared by on-time rate, delay and OTIF) ---------------------------------
 def _on_time(ctx: _Ctx):
-    """Returns (on_time bool series with NA = unknown, delay in days or None, columns, formula, notes, reason)."""
+    """Returns (on_time bool series with NA = unknown, delay in days or None, columns, formula, notes, reason).
+    Cancelled shipments (a delivery status saying cancelled) have no delivery outcome and are excluded."""
+    on, delay, cols, how, notes, reason = _on_time_raw(ctx)
+    if on is None:
+        return on, delay, cols, how, notes, reason
+    cancelled, _, scol = _status(ctx, SHIPPING_WORDS)
+    if cancelled is not None and scol is not None and ctx.tokens(scol) & SHIPPING_WORDS and cancelled.any():
+        n = int((cancelled & on.notna()).sum())
+        on = on.mask(cancelled)
+        if delay is not None:
+            delay = delay.mask(cancelled)
+        if n:
+            notes = notes + [f"{n:,} cancelled shipments ('{scol}') have no delivery outcome and are excluded."]
+            cols = cols + [scol]
+    return on, delay, cols, how, notes, reason
+
+
+def _on_time_raw(ctx: _Ctx):
     notes: list[str] = []
     dates = ctx.rank("datetime", numeric=False)
     exp = [c for c in dates if ctx.tokens(c) & EXPECTED_DATE]
@@ -110,7 +147,7 @@ def _k_on_time(ctx: _Ctx) -> list[KPIResult]:
     name = "On-time delivery rate"
     if on is None:
         return [ctx.skipped("on_time_rate", name, SC, "percent", reason),
-                ctx.skipped("avg_delay", "Average delay", SC, "number", reason)]
+                ctx.skipped("avg_delay", "Average delay vs expected", SC, "days", reason)]
     known = on.dropna()
     formula = f"on-time rows / rows with a known outcome x 100 ({how})"
     out = []
@@ -120,14 +157,38 @@ def _k_on_time(ctx: _Ctx) -> list[KPIResult]:
         out.append(ctx.result("on_time_rate", name, SC, 100 * float(known.astype(int).mean()), "percent", formula, cols,
                               notes + [f"Based on {len(known):,} rows with a known outcome."]))
     if delay is None or delay.notna().sum() == 0:
-        out.append(ctx.skipped("avg_delay", "Average delay", SC, "number",
+        out.append(ctx.skipped("avg_delay", "Average delay vs expected", SC, "days",
                                "Needs a date or day-count pair (actual vs expected); a flag alone gives no day counts."))
     else:
-        out.append(ctx.result("avg_delay", "Average delay (days vs expected)", SC, float(delay.mean()), "number",
+        out.append(ctx.result("avg_delay", "Average delay vs expected", SC, float(delay.mean()), "days",
                               f"AVG(actual - expected), {how}", cols,
                               notes + ["Negative values mean early; early and late rows are netted, so read it with the on-time rate.",
                                        f"Based on {int(delay.notna().sum()):,} rows."]))
+        late = delay[delay > 0]
+        if len(late):
+            out.append(ctx.result("avg_late_delay", "Average delay when late", SC, float(late.mean()), "days",
+                                  f"AVG(actual - expected) over late rows only, {how}", cols,
+                                  notes + [f"Based on the {len(late):,} late rows ({100 * len(late) / int(delay.notna().sum()):.1f}% "
+                                           "of rows with a known outcome); early and on-time rows are left out."]))
     return out
+
+
+def _k_cancelled(ctx: _Ctx) -> list[KPIResult]:
+    """Share of rows a status column marks as cancelled. Shipments when it is a delivery status, else orders."""
+    if not ctx.model.is_supply_chain:          # an order status alone must not make retail data look like supply chain
+        return []
+    cancelled, _, col = _status(ctx, SHIPPING_WORDS)
+    if col is None:                            # optional KPI: absent rather than listed as "not calculated"
+        return []
+    what = "shipments" if ctx.tokens(col) & SHIPPING_WORDS else "orders"
+    known = ctx.df[col].notna()
+    n = int(known.sum())
+    if n == 0:
+        return [ctx.not_calculable("cancel_rate", f"Cancelled {what}", SC, "percent", "", [col], f"'{col}' is empty")]
+    c = int((cancelled & known).sum())
+    return [ctx.result("cancel_rate", f"Cancelled {what}", SC, 100 * c / n, "percent",
+                       f"rows where {col} says cancelled / rows with a {col} x 100", [col],
+                       ctx.col_notes(col) + [f"{c:,} of {n:,} rows are cancelled."])]
 
 
 # ---- lead time --------------------------------------------------------------------------------
@@ -149,18 +210,35 @@ def lead_days(ctx: _Ctx):
         if neg:
             notes.append(f"Data check: {neg:,} rows have '{ad[0]}' before '{od[0]}'; they were excluded. Review them in the source.")
         return d, [od[0], ad[0]], notes
-    return None, [], ["Needs a lead-time column, or an order date and a received/delivered date."]
+    days = [c for c in _cols(ctx, ("duration", "quantity"), lambda t: bool(t & ACTUAL_DAYS) and bool(t & SHIPPING_WORDS), True)]
+    if days:
+        x = ctx.num(days[0])
+        neg = int((x < 0).sum())
+        notes = ctx.col_notes(days[0]) + [f"Based on {int((x >= 0).sum()):,} rows."]
+        if neg:
+            notes.append(f"Data check: {neg:,} rows have a negative value in '{days[0]}'; they were excluded.")
+        return x[x >= 0].dropna(), [days[0]], notes
+    return None, [], ["Needs a lead-time column, an actual shipping-days column, or an order date and a received/delivered date."]
+
+
+def lead_label(cols: list[str]) -> str:
+    """'shipping time' when the days come from an actual shipping/delivery-days column, else 'lead time'."""
+    from semantic.column_lexicon import token_set
+    if len(cols) == 1 and token_set(cols[0]) & SHIPPING_WORDS and "lead" not in token_set(cols[0]):
+        return "shipping time"
+    return "lead time"
 
 
 def _k_lead_time(ctx: _Ctx) -> list[KPIResult]:
-    key, name = "avg_lead_time", "Average lead time (days)"
+    key = "avg_lead_time"
     d, cols, notes = lead_days(ctx)
     if d is None:
-        return [ctx.skipped(key, name, SC, "number", notes[0])]
+        return [ctx.skipped(key, "Average lead time", SC, "days", notes[0])]
+    name = f"Average {lead_label(cols)}"
     formula = f"AVG({cols[0]})" if len(cols) == 1 else f"AVG({cols[1]} - {cols[0]}) in days"
     if d.empty:
-        return [ctx.not_calculable(key, name, SC, "number", formula, cols, "no row has both dates in a valid order", notes)]
-    return [ctx.result(key, name, SC, d.mean(), "number", formula, cols, notes)]
+        return [ctx.not_calculable(key, name, SC, "days", formula, cols, "no row has both dates in a valid order", notes)]
+    return [ctx.result(key, name, SC, d.mean(), "days", formula, cols, notes)]
 
 
 # ---- quantities: fill rate and OTIF -----------------------------------------------------------
@@ -259,7 +337,7 @@ def _reorder(ctx: _Ctx) -> str | None:
 
 def _k_below_reorder(ctx: _Ctx) -> list[KPIResult]:
     stock, rp = _stock(ctx), _reorder(ctx)
-    name = "Share of stock rows below reorder point"
+    name = "Stock records below reorder point (all dates)"
     if stock is None or rp is None:
         return [ctx.skipped("below_reorder_share", name, SC, "percent", "Needs a stock-on-hand column and a reorder-point column.")]
     both = ctx.num(stock).notna() & ctx.num(rp).notna()
@@ -269,7 +347,7 @@ def _k_below_reorder(ctx: _Ctx) -> list[KPIResult]:
     return [ctx.result("below_reorder_share", name, SC, 100 * float(below.mean()), "percent",
                        f"rows where {stock} < {rp} / rows x 100 (all dates)", [stock, rp],
                        [f"{int(below.sum()):,} of {int(both.sum()):,} stock positions across all dates; "
-                        "the separate 'Rows below reorder point' KPI uses the latest snapshot only."])]
+                        "the separate 'Items below reorder point (latest date)' KPI uses the latest snapshot only."])]
 
 
 def _sold(ctx: _Ctx) -> str | None:
@@ -288,7 +366,7 @@ def _k_cover_and_turnover(ctx: _Ctx) -> list[KPIResult]:
            if None in (stock, sold, date) else "")
     keys = (("days_of_cover", "Days of cover"), ("inventory_turnover", "Inventory turnover (per year)"))
     if why:
-        return [ctx.skipped(k, n, SC, "number", why) for k, n in keys]
+        return [ctx.skipped(k, n, SC, "days" if k == "days_of_cover" else "number", why) for k, n in keys]
     st_d, sold_d = _daily(ctx, stock, date), _daily(ctx, sold, date)
     dates = st_d.index.intersection(sold_d.index)
     if len(dates) < 2:
@@ -302,10 +380,10 @@ def _k_cover_and_turnover(ctx: _Ctx) -> list[KPIResult]:
     out = []
     daily_sales = float(sold_d.mean())
     if daily_sales <= 0:
-        out.append(ctx.not_calculable("days_of_cover", keys[0][1], SC, "number", "AVG(daily stock) / AVG(daily units sold)",
+        out.append(ctx.not_calculable("days_of_cover", keys[0][1], SC, "days", "AVG(daily stock) / AVG(daily units sold)",
                                       [stock, sold, date], "no units were sold"))
     else:
-        out.append(ctx.result("days_of_cover", keys[0][1], SC, float(st_d.mean()) / daily_sales, "number",
+        out.append(ctx.result("days_of_cover", keys[0][1], SC, float(st_d.mean()) / daily_sales, "days",
                               f"AVG(daily total {stock}) / AVG(daily total {sold})", [stock, sold, date], notes))
     costs = [c for c in ctx.rank("cost") if not (ctx.tokens(c) & TOTAL_TOKENS)]
     unit_costs = [c for c in costs if ctx.tokens(c) & UNIT_COST_TOKENS] or costs
@@ -429,6 +507,6 @@ def _k_spend(ctx: _Ctx) -> list[KPIResult]:
     return out
 
 
-SUPPLY_CHAIN_BUILDERS = (_k_spend, _k_on_time, _k_lead_time, _k_fill_rate, _k_otif, _k_stockout,
+SUPPLY_CHAIN_BUILDERS = (_k_spend, _k_on_time, _k_cancelled, _k_lead_time, _k_fill_rate, _k_otif, _k_stockout,
                          _k_below_reorder, _k_cover_and_turnover, _k_defect_rate, _k_supplier_concentration)
 PROCUREMENT_REPLACED = frozenset({"total_revenue", "revenue_growth", "aov", "avg_transaction", "revenue_by_category"})

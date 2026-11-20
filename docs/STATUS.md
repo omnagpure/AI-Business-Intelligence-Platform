@@ -293,6 +293,33 @@ model 72%, rules 97%). The model is therefore used automatically only where it h
 - **Tests:** `tests/test_model_switch.py` (19). `tests/test_role_stability.py` now finds the real files in sub-folders
   and under slightly different names; with `BI_REAL_FILES_DIR` set, all four real files are checked.
 
+## Phase 9, Batch 4: dashboard numbers and redesign
+- **Cancelled shipments:** status values are matched by word ("Shipping canceled", "PENDING_PAYMENT"), and a delivery
+  status is preferred. Cancelled shipments have no delivery outcome, so on-time and delay leave them out (DataCo on-time
+  42.7%, the 7,754 cancelled rows were counted before). New KPI `cancel_rate` (DataCo 4.3%), only for supply-chain data.
+- **New and renamed KPIs:** `avg_late_delay` (average delay of late rows only; DataCo 1.6 days). `avg_lead_time` falls
+  back to an actual shipping-days column and is then called "Average shipping time" (DataCo 3.5 days). Day values use a
+  new `days` unit. Stock KPIs say whether they read the latest date or all dates ("Items below reorder point (latest
+  date)" 14 vs "Stock records below reorder point (all dates)" 5.2%), which used to look contradictory.
+- **KPI history** (`analytics/kpi_trend.kpi_history`): every headline KPI is recomputed on each of the last 12 complete
+  periods, so a sparkline means exactly what its card means (on-time rate per month, stock on each month's last date).
+  Rates change in percentage points; changes under 0.5% (0.1 pts) read "No change". Growth KPIs get no history.
+  Cost: about 1.5 s on DataCo, cached per filter.
+- **Data-shape check** (`analytics/data_shifts.py`): a lasting x1.6 change near the end in rows per period or rows per
+  order is reported above the cards. DataCo: from Oct 2017 rows per order go from 3.0 to 1.0, which explains its -34%
+  revenue month.
+- **Views:** stock vs reorder now shows the share of items below their own reorder point per date (summing stock and
+  reorder points across items hid every shortage: "0 of 365 dates" became 5.2% on an average date, 14% at the peak).
+  New on-time by market/region view; on-time bars carry the overall rate as a reference line and the caption says when
+  groups hardly differ (under 2 pts). The trend view is not repeated (the Explore tab has it).
+- **Design:** header with file, rows, date coverage and domain badge; comparison and primary-column settings in one
+  popover; eight uniform KPI cards (value, change chip coloured by whether up is good, grey for neutral KPIs such as
+  stock or supplier concentration, sparkline, footnote saying what period it covers); other KPIs grouped by area; one
+  "How these numbers are calculated" panel; bar value labels, readable axis titles, hollow partial-period markers.
+  Breakdown defaults to shipping mode / market for supply-chain data and formats its table. Light and dark themes.
+- **Tests:** `tests/test_dashboard_numbers.py` (9); the stock-vs-reorder view test now checks that one item above its
+  reorder point cannot hide another below it.
+
 ## Phase 9, Batch 2: performance, report options, progress bars
 **Excel export was deliberately removed** (module, button, tests, documentation). Reports are PDF and HTML only. `openpyxl` stays in
 `requirements.txt` because it reads uploaded .xlsx files.
