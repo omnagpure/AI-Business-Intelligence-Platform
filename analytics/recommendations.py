@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from insights.evidence import Insight
+from semantic.column_lexicon import token_set
 
 
 @dataclass(frozen=True)
@@ -204,6 +205,18 @@ def plan(insight: Insight) -> Plan:
     fill = lambda x: x.replace("{subject}", subject)                      # noqa: E731  (subject may contain braces)
     why = fill(why)
     return Plan(kind, why[:1].upper() + why[1:], fill(action), tuple(fill(x) for x in steps), page)
+
+
+_DELIVERY_WORDS = {"late", "delay", "delayed", "overdue", "time", "ontime", "delivery", "lead", "shipping"}
+
+
+def related_driver(insight: Insight, insights) -> Insight | None:
+    """A drivers finding that explains a delivery problem (on-time rate, delay, lead time), if there is one."""
+    if insight.rule == "drivers" or insight.group not in ("Supply chain", "Performance") or             insight.direction not in ("low", "high", "down", "up"):
+        return None
+    if not token_set(insight.subject) & _DELIVERY_WORDS:
+        return None
+    return next((d for d in insights if d.rule == "drivers" and token_set(d.subject) & _DELIVERY_WORDS), None)
 
 
 def build_recommendations(insights: list[Insight]) -> list[Recommendation]:

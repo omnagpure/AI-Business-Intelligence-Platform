@@ -15,7 +15,7 @@ from insights.insight_rules import InsightInputs
 from reporting import theme
 from reporting.html_report import render_html
 from reporting.pdf_report import render_pdf
-from reporting.report_builder import _flag_total, build_report, clean, safe_filename
+from reporting.report_builder import _flag_total, build_report, clean, kpi_status, safe_filename
 from semantic.semantic_model import build_semantic_model
 
 WHEN = datetime(2026, 1, 15, 9, 30)
@@ -64,7 +64,7 @@ def test_skipped_analyses_are_stated_with_reason(ctx):
     d = _build(ctx, unavailable={"forecast": "No date column."})
     f = d.section("forecast")
     assert f.status == "skipped" and f.reason == "No date column."
-    assert ("Forecast", "No date column.") in d.skipped
+    assert ("Outlook", "No date column.") in d.skipped
     assert any("Not included" in p for p in d.summary)
 
 
@@ -133,3 +133,127 @@ def test_methodology_states_which_settings_were_used(ctx):
     assert any("default settings" in m for m in _build(ctx).methodology)
     d = _build(ctx, user_settings=("Forecasting", "Drivers"))
     assert any("Forecasting, Drivers" in m for m in d.methodology)
+
+
+# ---- business-report structure (Phase 9, batch 9) ------------------------------------------------
+def test_body_comes_before_appendix_and_labels_follow_parts(ctx):
+    d = _build(ctx, forecast=_forecast())
+    main, appx = d.shown("main"), d.shown("appendix")
+    assert main[0].key == "insights" and [s.label for s in main] == [str(i) for i in range(1, len(main) + 1)]
+    assert {s.key for s in appx} >= {"dataset", "quality", "definitions"}
+    assert [s.label for s in appx] == [chr(ord("A") + i) for i in range(len(appx))]
+    assert d.method_label == chr(ord("A") + len(appx))
+    assert d.section("recs") is None                                  # actions live with their findings now
+    assert all(s.label == "" for s in d.sections if s.status == "skipped")
+
+
+def test_executive_summary_has_scorecard_takeaways_and_actions(ctx):
+    d = _build(ctx)
+    k = ctx[4]
+    assert d.lede.startswith(f"This review covers {len(ctx[1]):,} records")
+    assert 1 <= len(d.tiles) <= 4 and all(t.status in ("good", "warn", "bad", "neutral") for t in d.tiles)
+    by_name = {r.name: format_value(r.value, r.unit) for r in k.results if r.status == "ok"}
+    assert all(by_name.get(t.label) == t.value for t in d.tiles)      # every tile is a computed KPI, unchanged
+    assert d.takeaways and len(d.actions) <= 5
+    assert len({a.action for a in d.actions}) == len(d.actions)
+    assert d.headline == tuple((t.label, t.value) for t in d.tiles)
+
+
+def test_kpi_status_uses_the_insight_reference_levels():
+    class R:
+        def __init__(self, key, value):
+            self.key, self.value = key, value
+    assert kpi_status(R("on_time_rate", 95))[0] == "good"
+    assert kpi_status(R("on_time_rate", 85))[0] == "warn"
+    assert kpi_status(R("on_time_rate", 42.7)) == ("bad", "Below 90% reference")
+    assert kpi_status(R("stockout_rate", 20))[0] == "bad"
+    assert kpi_status(R("profit_margin", -1))[0] == "bad"
+    assert kpi_status(R("total_revenue", 1e6)) == ("neutral", "")
+
+
+def test_finding_cards_carry_why_and_action(ctx):
+    d = _build(ctx)
+    cards = d.section("insights").cards
+    assert cards and all(c.kind in ("risk", "opportunity", "pattern", "data") for c in cards)
+    assert any(c.action and c.why for c in cards)
+
+
+def test_html_has_summary_contents_and_no_raw_markup(ctx):
+    html = render_html(_build(ctx)).decode()
+    assert 'id="summary"' in html and 'class="toc"' in html and "Appendix" in html
+    assert "&lt;font" not in html and "<font" not in html
+
+
+# ---- report design round 2: data-driven cover, at-a-glance, trends, action plan, glossary -------------
+from reporting import fonts
+from reporting.report_builder import AUTO_TITLES, readable
+
+
+def test_title_comes_from_the_data_unless_typed(ctx):
+    d = _build(ctx)
+    assert d.title == AUTO_TITLES.get(ctx[3].domain.domain, AUTO_TITLES["general"])
+    assert _build(ctx, title="Q3 board pack").title == "Q3 board pack"
+    assert d.key_message and d.key_message[0].isupper() and d.key_message.endswith(".")
+
+
+def test_readable_column_names():
+    assert readable("Late_delivery_risk") == "Late delivery risk"
+    assert readable("OrderDate") == "Order Date"
+    assert readable("Order Item Total") == "Order Item Total"
+
+
+def test_every_shown_section_has_a_headline_and_description(ctx):
+    d = _build(ctx, forecast=_forecast(), df=ctx[1])
+    for s in d.shown("main"):
+        assert s.headline and s.desc, s.key
+    assert all(s.desc for s in d.shown("appendix"))
+
+
+def test_rows_enable_trends_comparison_and_breakdown(ctx):
+    with_df = _build(ctx, df=ctx[1])
+    without = _build(ctx)
+    assert with_df.section("trends").status == "ok" and with_df.section("trends").charts
+    assert without.section("trends").status == "skipped" and ("Performance over time", without.section("trends").reason) not in without.skipped
+    assert with_df.cover_png and with_df.cover_png.startswith(b"\x89PNG")
+    assert all(c.half for c in with_df.section("trends").charts)
+
+
+def test_action_plan_has_owner_timeframe_and_measure(ctx):
+    d = _build(ctx)
+    plan_sec = d.section("plan")
+    assert plan_sec.status == "ok"
+    t = plan_sec.tables[0]
+    assert t.header == ("#", "Action", "Suggested owner", "When", "Measure of success", "Priority")
+    assert all(r[2] and r[3] and r[4] for r in t.rows)
+    assert all(a.owner and a.timeframe for a in d.actions)
+
+
+def test_conclusion_and_glossary(ctx):
+    d = _build(ctx, forecast=_forecast())
+    c = d.section("conclusion")
+    assert c.status == "ok" and c.lead.startswith("Overall,") and c.steps
+    g = d.section("glossary")
+    assert g.status == "ok" and any(row[0] == "Forecast baseline" for row in g.tables[0].rows)
+
+
+def test_branding_reaches_both_outputs(ctx):
+    logo = (__import__("pathlib").Path(__file__).resolve().parent.parent / "assets" / "favicon.png").read_bytes()
+    d = _build(ctx, organisation="Northwind", logo=logo, accent="#0E6466", classification="Confidential", df=ctx[1])
+    assert d.accent == "#0E6466" and d.classification == "Confidential"
+    html = render_html(d).decode()
+    assert "Northwind" in html and "--accent:#0E6466" in html and "data:image/png;base64," in html and "CONFIDENTIAL" in html
+    pdf = render_pdf(d)
+    assert pdf.startswith(b"%PDF") and b"Page 2 of" not in pdf[:100]          # page numbers are drawn, not plain text at the top
+
+
+def test_bad_logo_is_ignored_by_html_and_pdf(ctx):
+    d = _build(ctx, logo=b"not an image")
+    assert "data:image/" not in render_html(d).decode().split("<main>")[0].split('class="brand"')[1][:200]
+    assert render_pdf(d).startswith(b"%PDF")
+
+
+def test_plex_fonts_ship_and_register():
+    assert fonts.available()
+    names = fonts.pdf_fonts()
+    assert names["regular"].startswith("Plex") and names["symbol"]
+    assert "@font-face" in fonts.html_font_faces()

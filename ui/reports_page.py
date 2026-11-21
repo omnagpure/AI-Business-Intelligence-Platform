@@ -1,6 +1,7 @@
 """Reports page: builds a PDF report (and an HTML report if ticked) from computed results only, plus CSV downloads."""
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from pathlib import PurePath
 
@@ -11,7 +12,8 @@ from analytics.kpis import cache_key
 from core.estimates import describe_estimate
 from core.logging_config import get_logger
 from reporting.assembly import ReportContext, Sources, assemble_report
-from reporting.report_builder import safe_filename
+from reporting.report_builder import AUTO_TITLES, safe_filename
+from reporting.theme import ACCENTS
 from storage import repository
 from ui import auth_state, notify, state
 from ui.analytics_state import base_key
@@ -23,6 +25,8 @@ from ui.user_runs import user_runs
 log = get_logger("ui.reports")
 _PKG = "report_package"
 _CSV = "report_csv_bytes"
+CLASSIFICATIONS = ["Internal", "Confidential", "Public"]
+MAX_LOGO_BYTES = 1_000_000
 
 
 def _log_csv(cleaning) -> bytes | None:
@@ -33,12 +37,34 @@ def _log_csv(cleaning) -> bytes | None:
     return pd.DataFrame(rows).to_csv(index=False).encode("utf-8")
 
 
-def _build(result, df, profile, model, title: str, prepared: str, advanced: bool, with_html: bool) -> dict:
+def _branding() -> dict:
+    """Optional organisation name, logo, accent colour and classification for the cover and page headers."""
+    with st.expander("Branding (optional)"):
+        b1, b2, b3 = st.columns([2, 1, 1])
+        org = b1.text_input("Prepared by (your organisation)", value="", max_chars=80, key="rep_org")
+        accent_name = b2.selectbox("Accent colour", list(ACCENTS), key="rep_accent")
+        cls = b3.selectbox("Classification", CLASSIFICATIONS, key="rep_cls")
+        up = st.file_uploader("Logo (PNG or JPG, up to 1 MB)", type=["png", "jpg", "jpeg"], key="rep_logo")
+        logo = None
+        if up is not None:
+            data = up.getvalue()
+            if len(data) > MAX_LOGO_BYTES:
+                st.warning("The logo is larger than 1 MB and was not used.")
+            elif not (data[:8] == b"\x89PNG\r\n\x1a\n" or data[:3] == b"\xff\xd8\xff"):
+                st.warning("The logo is not a PNG or JPG image and was not used.")
+            else:
+                logo = data
+    return {"organisation": org.strip(), "accent": ACCENTS[accent_name], "classification": cls, "logo": logo}
+
+
+def _build(result, df, profile, model, title: str, prepared: str, advanced: bool, with_html: bool, brand: dict | None = None) -> dict:
     cs = state.get_cleaning()
     quality = cs.quality if cs is not None else result.quality
     cleaning = cs.result if cs is not None else None
+    brand = brand or {}
     ctx = ReportContext(result.dataset.filename, result.dataset.is_sample, result.dataset.fingerprint, profile, quality, len(df), model,
-                        cleaning, title, prepared)
+                        cleaning, title, prepared, df=df, organisation=brand.get("organisation", ""), logo=brand.get("logo"),
+                        accent=brand.get("accent", ACCENTS["Navy"]), classification=brand.get("classification", "Internal"))
     sources = Sources(kpi_source(df, model), findings_source(df, model), advanced_sources(df, profile, model))
     with ProgressBar("Building the report", numbered=True) as bar:
         out = assemble_report(ctx, sources, user_results=user_runs() if advanced else {}, advanced=advanced, with_html=with_html, progress=bar)
@@ -117,22 +143,26 @@ def _render_current() -> None:
         empty_state("Nothing to report", "The active dataset has no rows.")
         return
 
+    auto = AUTO_TITLES.get(model.domain.domain, AUTO_TITLES["general"])
     c1, c2 = st.columns(2)
-    title = c1.text_input("Report title", value="Business Intelligence Report", max_chars=90, key="rep_title")
+    title = c1.text_input("Report title", value="", max_chars=90, key="rep_title", placeholder=f"Automatic: {auto}",
+                          help="Leave empty to use a title chosen from the data's business area.")
     prepared = c2.text_input("Prepared for (optional)", value="", max_chars=80, key="rep_for")
+    brand = _branding()
     advanced = st.checkbox("Include forecast, anomaly, segment and driver analyses (default settings; can take a while on large files)",
                            value=True, key="rep_adv")
     with_html = st.checkbox("Also build HTML", value=False, key="rep_html",
                             help="A self-contained web page version of the same report. It adds a little time, so it is off by default.")
-    key = cache_key(base_key(), title, prepared, advanced, with_html)
+    key = cache_key(base_key(), title, prepared, advanced, with_html, brand["organisation"], brand["accent"], brand["classification"],
+                    hashlib.sha256(brand["logo"] or b"").hexdigest()[:12])
     hint = describe_estimate("report", len(df)) if advanced else None
     if hint:
         st.caption(hint)
     pkg = st.session_state.get(_PKG)
     if st.button("Build PDF and HTML reports" if with_html else "Build PDF report", type="primary", key="rep_build"):
         try:
-            pkg = {"key": key, **_build(result, df, profile, model, title, prepared, advanced, with_html)}
-            _save_history(pkg, ds.filename, title)
+            pkg = {"key": key, **_build(result, df, profile, model, title, prepared, advanced, with_html, brand)}
+            _save_history(pkg, ds.filename, pkg["data"].title if pkg.get("data") is not None else (title or auto))
         except Exception:
             log.exception("Report build failed")
             st.error("The report could not be built for this dataset.")
@@ -166,9 +196,31 @@ def _downloads(pkg: dict, stem: str) -> None:
     if "log" in files:
         st.download_button("Transformation log (CSV)", files["log"], file_name=f"{stem}_transformation_log.csv", mime="text/csv", key="dl_log")
     if data is not None:
-        with st.expander("What is in the report"):
-            st.dataframe(pd.DataFrame([{"Section": s.title, "Status": "included" if s.status == "ok" else "not included", "Reason": s.reason}
-                                       for s in data.sections]), hide_index=True)
+        _preview(data)
+
+
+def _preview(data) -> None:
+    """The report's executive summary as it appears on its first page, so the reader knows what they are downloading."""
+    with st.container(border=True):
+        st.markdown("**Executive summary preview**")
+        if data.lede:
+            st.write(data.lede)
+        if data.tiles:
+            cols = st.columns(len(data.tiles))
+            for col, t in zip(cols, data.tiles):
+                col.metric(t.label, t.value, t.note or None, delta_color={"good": "normal", "bad": "inverse", "warn": "inverse"}.get(t.status, "off"),
+                           delta_arrow="off")
+        if data.actions:
+            st.markdown("**Priority actions**")
+            st.markdown("\n".join(f"{k}. {a.action}" for k, a in enumerate(data.actions, 1)))
+    with st.expander("Contents of the report"):
+        rows = [{"Section": "Executive summary", "Part": "Summary"}]
+        rows += [{"Section": f"{s.label}  {s.title}", "Part": "Body" if s.part == "main" else "Appendix"}
+                 for s in data.sections if s.status == "ok"]
+        rows.append({"Section": f"{data.method_label}  Methodology and limitations", "Part": "Appendix"})
+        st.dataframe(pd.DataFrame(rows), hide_index=True)
+        if data.skipped:
+            st.caption("Not included: " + "; ".join(f"{t} ({r.rstrip('.')})" for t, r in data.skipped) + ".")
 
 
 def _csv_download(df: pd.DataFrame, stem: str) -> None:

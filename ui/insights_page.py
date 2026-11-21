@@ -15,7 +15,7 @@ import streamlit as st
 
 from analytics.data_shifts import describe_shifts, detect_shifts
 from analytics.kpis import DataFilter, _Ctx, _order_id, primary_date_column
-from analytics.recommendations import KINDS, PAGE_LABELS, Plan, plan
+from analytics.recommendations import KINDS, PAGE_LABELS, Plan, plan, related_driver
 from config.analytics_config import DEFAULT_ANALYTICS, DEFAULT_INSIGHTS
 from core.estimates import describe_estimate
 from core.logging_config import get_logger
@@ -24,7 +24,7 @@ from insights.default_runs import PAGE_NAMES
 from insights.evidence import Insight
 from insights.insight_engine import generate_insights
 from insights.insight_rules import InsightInputs
-from semantic.column_lexicon import DOMAIN_LABELS, token_set
+from semantic.column_lexicon import DOMAIN_LABELS
 from ui import nav, state
 from ui.analytics_state import cached
 from ui.layout import badge, callout, empty_state, lede, meta_line, no_dataset_notice, page_title, section, stat_cards
@@ -40,7 +40,6 @@ _SEV = {"high": ("High priority", "bad"), "medium": ("Medium priority", "warn"),
 _KIND_TONE = {"risk": "bad", "opportunity": "good", "pattern": "info", "data": "flat"}
 _KIND_ORDER = ("risk", "opportunity", "pattern", "data")
 _FILTERS = {"all": "All", "risk": "Needs attention", "opportunity": "Opportunities", "pattern": "Patterns", "data": "Data notes"}
-_LATE_WORDS = {"late", "delay", "delayed", "overdue", "time", "ontime", "delivery", "lead", "shipping"}
 
 
 def _advanced(df, profile, model) -> tuple[dict, list[tuple[str, str]], list[str]]:
@@ -117,15 +116,6 @@ def _shift_text(df, model) -> str:
 
 
 # ---- page body ------------------------------------------------------------------------------------
-def _related(i: Insight, by_rule: dict[str, list[Insight]]) -> Insight | None:
-    """A drivers finding that explains a delivery problem (on-time rate, delay, lead time), if there is one."""
-    if i.rule == "drivers" or i.group not in ("Supply chain", "Performance") or i.direction not in ("low", "high", "down", "up"):
-        return None
-    if not token_set(i.subject) & _LATE_WORDS:
-        return None
-    return next((d for d in by_rule.get("drivers", []) if token_set(d.subject) & _LATE_WORDS), None)
-
-
 def _summary(items: list[tuple[Insight, Plan]]) -> str:
     if not items:
         return ("Nothing in this data crossed a threshold: no risks, unusual patterns or data problems were found. That is a "
@@ -154,9 +144,6 @@ def _summary(items: list[tuple[Insight, Plan]]) -> str:
 
 def _show(report, shift: str, unavailable: list[tuple[str, str]], reused: list[str]) -> None:
     items = [(i, plan(i)) for i in report.insights]
-    by_rule: dict[str, list[Insight]] = {}
-    for i, _ in items:
-        by_rule.setdefault(i.rule, []).append(i)
 
     lede(_summary(items))
     if shift:
@@ -187,7 +174,7 @@ def _show(report, shift: str, unavailable: list[tuple[str, str]], reused: list[s
     if top:
         section("Top priorities", "Where to start, with the steps to take")
         for n_, (i, p) in enumerate(top, 1):
-            _priority_card(n_, i, p, _related(i, by_rule))
+            _priority_card(n_, i, p, related_driver(i, report.insights))
 
     # ---- action plan
     section("Action plan", "Every recommended step in priority order")
@@ -200,7 +187,7 @@ def _show(report, shift: str, unavailable: list[tuple[str, str]], reused: list[s
                                 format_func=lambda k: f"{_FILTERS[k]} ({counts[k]})", label_visibility="collapsed") or "all"
     shown = [(i, p) for i, p in items if pick == "all" or p.kind == pick]
     for k, (i, p) in enumerate(shown):
-        _finding_card(k, i, p, _related(i, by_rule))
+        _finding_card(k, i, p, related_driver(i, report.insights))
     _method(report, unavailable, reused)
 
 

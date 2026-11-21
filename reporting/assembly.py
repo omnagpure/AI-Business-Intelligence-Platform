@@ -41,8 +41,13 @@ class ReportContext:
     analysis_rows: int
     semantic_model: Any = None
     cleaning: Any = None
-    title: str = "Business Intelligence Report"
+    title: str = ""                      # empty: a title is chosen from the data's business area
     prepared_by: str = ""
+    df: Any = None                       # the analysed rows: enables trends, period comparison and breakdowns
+    organisation: str = ""
+    logo: bytes | None = None
+    accent: str = "#1F4E89"
+    classification: str = "Internal"
 
 
 @dataclass(frozen=True)
@@ -121,7 +126,9 @@ def assemble_report(ctx: ReportContext, sources: Sources, *, user_results: Mappi
             filename=ctx.filename, is_sample=ctx.is_sample, fingerprint=ctx.fingerprint, profile=ctx.profile, quality=ctx.quality,
             analysis_rows=ctx.analysis_rows, semantic_model=ctx.semantic_model, unavailable=unavailable, title=ctx.title,
             prepared_by=ctx.prepared_by, user_settings=tuple(used), kpis=kpis, insight_report=insight_report, forecast=adv.get("forecast"),
-            anomalies=adv.get("anomalies"), segmentation=adv.get("segmentation"), drivers=adv.get("drivers"), cleaning=ctx.cleaning)
+            anomalies=adv.get("anomalies"), segmentation=adv.get("segmentation"), drivers=adv.get("drivers"), cleaning=ctx.cleaning,
+            df=getattr(ctx, "df", None), organisation=getattr(ctx, "organisation", ""), logo=getattr(ctx, "logo", None),
+            accent=getattr(ctx, "accent", "#1F4E89"), classification=getattr(ctx, "classification", "Internal"))
         return state["data"]
 
     for fmt in ("pdf", *(["html"] if with_html else [])):

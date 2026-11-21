@@ -320,6 +320,35 @@ model 72%, rules 97%). The model is therefore used automatically only where it h
 - **Tests:** `tests/test_dashboard_numbers.py` (9); the stock-vs-reorder view test now checks that one item above its
   reorder point cannot hide another below it.
 
+## Phase 9, Batch 10: report design and depth
+- Typeface: IBM Plex Sans (SIL Open Font License, `assets/fonts/` with its licence) for the PDF, the charts and the HTML (embedded); DejaVu only for the symbols Plex lacks. `reporting/fonts.py` falls back to DejaVu, then Helvetica.
+- Cover: a title chosen from the business area ("Supply Chain Performance Review") unless one is typed; a key message; three headline figures over a quiet chart of the main measure drawn from the data; prepared for / prepared by / data covers / date / report ID; classification badge; the Vesper mark, or your logo.
+- "Report at a glance" replaces the plain contents page: Summary, Analysis and Appendix groups, a one-line description with real numbers for every section, clickable entries, plus "How to read this report" and "About the data" boxes.
+- Every section has a headline that states its point, big-number callouts and a sentence under each chart saying what it shows. Column names are readable ("Late delivery risk"); the appendix keeps them exactly as in the data.
+- New sections (`reporting/data_views.py` reuses `kpi_history`, `compute_kpis` on date windows and `suggest_views`):
+  - Performance over time: monthly trends of the headline KPIs (two-up) and the latest 12 (or 6, 3) months against the window before, with the change coloured as better or worse. KPI tiles carry the same change.
+  - Operations in detail / Breakdown in detail: the Dashboard's breakdowns (on-time by shipping mode and market, shipping-time distribution, share by category) with their computed captions.
+  - Recommendations and action plan: suggested owner, timeframe (by priority) and a measure of success (the reference level where one exists).
+  - Conclusion and next steps: overall assessment, strengths, the period change and the first three steps.
+  - Glossary (only the terms the report uses).
+- Executive summary: three paragraphs (scope, performance with the period change, findings), the scorecard with changes, key takeaways, priority actions with owner and timeframe.
+- Appendix divider page; "Page n of N"; running header with the organisation or the Vesper mark.
+- Reports page: the title defaults to automatic; a Branding expander (organisation, logo PNG/JPG up to 1 MB, accent colour Navy / Teal / Indigo / Graphite, classification).
+- Tests: 9 new in `tests/test_reporting.py`.
+
+## Phase 9, Batch 9: reports
+- `reporting/theme.py`: white paper, charcoal text, one navy accent; red / amber / green only for status. The cream background, orange accent and serif fonts are gone.
+- `reporting/report_builder.py` (restructured like a business report):
+  - Executive summary: a summary paragraph (scope, period, the most pressing issue, revenue and margin), a scorecard of up to four headline KPIs coloured against the insight reference levels (`kpi_status`), key takeaways and the top five priority actions, plus a data-quality line.
+  - Body: 1 Key findings and recommendations (each finding with why it matters, the action, steps, the related driver clue and its evidence; then an action plan), 2 Performance scorecard (Area, Metric, Value, Status, Period), Outlook, Unusual values (one row per column), Segments (with names), What drives the target.
+  - Appendix: A Data overview, B Data quality, C Metric definitions (formulas and metrics that could not be calculated), D Transformation log (only when cleaning ran), then Methodology and limitations.
+  - Analyses that did not run get no empty numbered section; they are listed once in the summary and the methodology. The separate Recommendations section is merged into the findings.
+- `reporting/pdf_report.py`: white cover with a navy band, the Vesper name and a details grid (prepared for, data covers, date, report ID); contents page; KPI tiles; coloured priority markers; findings as bordered cards; running header with the report title and footer with report ID, date and page number. Sans-serif throughout.
+- `reporting/html_report.py`: the same structure and look, with a linked contents list.
+- `ui/reports_page.py`: after building, a preview of the executive summary (summary, KPI tiles, priority actions) and the report's contents with their numbering.
+- `analytics/recommendations.py`: `related_driver` moved here from the Insights page so the report shows the same drivers clue.
+- Tests: 5 new in `tests/test_reporting.py` (structure and labels, executive summary, KPI status, finding cards, HTML).
+
 ## Phase 9, Batch 8: insights page
 - `analytics/recommendations.py`: new `plan(insight)` gives each finding a kind (needs attention, opportunity, pattern, data note), why it matters, a short action, concrete steps and the page that helps. `recommend` (the one-line next step used by reports) is unchanged.
 - `insights/insight_rules.py`:

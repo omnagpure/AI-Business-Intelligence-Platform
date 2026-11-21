@@ -71,6 +71,15 @@
 - With less than a year of history before the test period, month is left out, so seasonality is not tested.
 - Categories with more than 20 values are left out (DataCo's Category Name, Order Region, Order Country).
 
+## Reports
+- Owners and timeframes in the action plan are suggestions from the type and priority of each finding, not knowledge
+  of your organisation. Measures of success use this app's reference levels where one exists; otherwise the owner sets it.
+- The period comparison drops the last month unless the data reaches its final day, so a file ending on 30 December
+  compares windows ending in November.
+- Trends and breakdowns need the analysed rows; built without them (older callers), those sections are left out silently.
+- The automatic title follows the detected business area; a wrongly detected area gives a wrong title (type your own).
+- The cover graphic is the main measure by month, drawn without axes; it decorates and is not meant to be read.
+
 ## Accounts and authentication
 - No email service: there is no self-service password reset or email verification. Administrators reset passwords
   with `python -m scripts.reset_password`.
