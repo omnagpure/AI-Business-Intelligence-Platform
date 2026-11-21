@@ -55,6 +55,14 @@
 - Segment names come from the single strongest difference; read the card text for the rest.
 - The scatter thins very large tables to about 4,000 points (an evenly spaced sample per segment). The averages use every entity.
 
+## Drivers
+- Importance is association on held-out rows, not cause. A random forest on at most 20,000 sampled rows.
+- Leak rules are name and role based (forecast / plan words, actual-delivery words, profit words) plus correlation
+  checks. A derived column with an unrelated name can still get through; the near-perfect and one-column warnings are
+  the backstop.
+- With less than a year of history before the test period, month is left out, so seasonality is not tested.
+- Categories with more than 20 values are left out (DataCo's Category Name, Order Region, Order Country).
+
 ## Accounts and authentication
 - No email service: there is no self-service password reset or email verification. Administrators reset passwords
   with `python -m scripts.reset_password`.

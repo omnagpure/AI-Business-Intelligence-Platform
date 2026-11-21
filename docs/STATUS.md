@@ -320,6 +320,19 @@ model 72%, rules 97%). The model is therefore used automatically only where it h
 - **Tests:** `tests/test_dashboard_numbers.py` (9); the stock-vs-reorder view test now checks that one item above its
   reorder point cannot hide another below it.
 
+## Phase 9, Batch 7: drivers page
+- `analytics/drivers.py`:
+  - More columns that predict the target only because they come from it are left out with the reason: a forecast or plan of the target (DataCo-style `Demand_Forecast` for `Units_Sold`), the actual delivery days behind a late / on-time flag (`Days for shipping (real)` for `Late_delivery_risk`; scheduled days stay in), and other profit measures (such as `Order Item Profit Ratio`) for a profit or revenue target.
+  - Columns that carry the same information as another (correlation 0.98+, or categories that map one-to-one) are counted once, so one driver's importance is not split across two names (`Product Price` / `Order Item Product Price`).
+  - A near-perfect held-out fit (R-squared or ROC AUC 0.99+) is flagged as a probable definition leak (`near_perfect`).
+  - A month or weekday feature is left out when more than 20% of the test rows fall in values the training period never saw (one year of data with a time-ordered split).
+  - Group tables: month and weekday names in calendar order (all values), up to five equal-count bands for numeric drivers, and categories as before; built for the top four drivers with positive importance. New `overall` (mean target, or share of yes).
+  - `default_target` (moved from `insights/default_runs.py`): supply chain first (a late / on-time flag, then a delay or actual delivery time), then profit, revenue and quantity. The page, the Home card and Insights now start from the same target and share one cache entry.
+- Real files: DataCo lateness went from ROC AUC 1.00 (actual shipping days) to 0.76 with Shipping Mode first (First Class late 96% of the time against 55% overall). On supply_chain_dataset1, `Units_Sold` was 99.9% "explained" by `Demand_Forecast`; without it the page honestly reports that no column clearly explains units sold.
+- `ui/drivers_page.py` (rewrite): runs on open; setup card (result to explain, Columns popover); a sentence that gives the answer and how far to trust it; stat cards (fit, error or accuracy against a simple guess, strongest link, columns compared); callouts for leaks and notes; driver cards with a plain sentence each; a share-of-power chart; one tab per driver showing how the result changes per group against the overall line; tabs for all columns, left-out columns (leak reasons first) and how the check was done.
+- Home card uses the same default and mentions the near-perfect case.
+- Tests: 9 new in `tests/test_drivers.py`. `test_drivers_page.py` was rewritten for auto-run and a target change.
+
 ## Phase 9, Batch 6: segmentation page
 - `analytics/segmentation.py`:
   - Entity columns that group the rows the same way (Customer Id / Order Customer Id, Product Card Id / Product Name) are offered once; the name is kept over a numeric id.

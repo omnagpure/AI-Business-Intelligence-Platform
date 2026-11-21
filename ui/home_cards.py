@@ -12,7 +12,6 @@ import streamlit as st
 
 from analytics.anomaly_detection import METHODS, default_columns, eligible_columns
 from analytics.descriptive import FREQ_LABELS
-from analytics.drivers import available_date_parts, candidate_features, driver_targets
 from analytics.forecasting import DEFAULT_HORIZON, suggest_setup, target_columns
 from analytics.segmentation import SCALERS, build_entity_features, entity_candidates
 from config.analytics_config import DEFAULT_ANALYTICS
@@ -21,7 +20,7 @@ from ui import nav
 from ui.analysis_runner import safe_cached
 from ui.analytics_state import base_key
 from ui.anomaly_page import screen as _screen
-from ui.drivers_page import _explain
+from ui.drivers_page import _explain, default_params
 from ui.forecasting_page import _ROW_COUNT, forecast_for
 from ui.segmentation_page import _cluster
 
@@ -88,9 +87,14 @@ def summarise_drivers(res, target: str) -> Card:
     if not res.reliable or res.importance.empty:
         return Card("drivers", "Drivers", f"No column clearly explains {target}",
                     "The model did not predict held-out rows better than a simple guess.")
-    top = str(res.importance.iloc[0]["feature"])
-    return Card("drivers", "Drivers", f"{top} is the column most associated with {target}",
-                "An association found on held-out rows, not proof of cause.")
+    top = res.importance.iloc[0]
+    if getattr(res, "near_perfect", False):
+        return Card("drivers", "Drivers", f"{target} is predicted almost perfectly from {top['feature']}",
+                    "That usually means it is part of how the result is recorded; check it on the Drivers page. "
+                    "An association, not proof of cause.")
+    share = f" ({float(top['share']):.0%} of the explanatory power)" if "share" in res.importance else ""
+    return Card("drivers", "Drivers", f"{top['feature']} is the column most associated with {target}",
+                f"Found on held-out rows{share}. An association, not proof of cause.")
 
 
 # ---- one function per card: same defaults and cache keys as the page ---------------------------
@@ -146,19 +150,15 @@ def _segment_card(df, model) -> Card:
 
 
 def _driver_card(df, profile, model) -> Card:
-    targets = driver_targets(df, profile, model)
-    if not targets:
-        return Card("drivers", "Drivers", "Skipped: no suitable target to explain",
-                    "A target needs a numeric measure with enough distinct values, or a Yes/No column.", True)
-    target = list(targets)[0]
-    num, cat, _ = candidate_features(df, profile, model, target)
-    feats = tuple(num + cat + available_date_parts(df, model, target))
-    p = (base_key(), target, feats)
+    p = default_params(df, profile, model)
+    if p is None:
+        return Card("drivers", "Drivers", "Skipped: no suitable result to explain",
+                    "A result needs a numeric measure with enough distinct values, or a Yes/No column.", True)
     status, res = safe_cached("driver_result", p[1:], lambda: _explain(df, profile, model, p),
                               "Driver analysis could not be completed for this selection.")
     if status != "ok":
         return Card("drivers", "Drivers", "Skipped: analysis not possible" if status == "insufficient" else "Could not be completed", res, True)
-    return summarise_drivers(res, target)
+    return summarise_drivers(res, p[1])
 
 
 def _explorer_card(df) -> Card:

@@ -4,9 +4,8 @@ Each function raises InsufficientDataError (user-safe reason) when the data cann
 from __future__ import annotations
 
 from analytics.anomaly_detection import default_columns, eligible_columns, run_anomaly_detection
-from analytics.drivers import driver_targets, run_driver_analysis
+from analytics.drivers import default_target, run_driver_analysis
 from analytics.forecasting import forecast_series, suggest_setup
-from analytics.kpis import primary_column
 from analytics.segmentation import build_entity_features, entity_candidates, run_segmentation
 from config.analytics_config import DEFAULT_ANALYTICS, AnalyticsConfig
 from core.exceptions import InsufficientDataError
@@ -42,12 +41,7 @@ def default_segmentation(df, model, config: AnalyticsConfig = DEFAULT_ANALYTICS,
 
 
 def default_driver_target(df, profile, model, config: AnalyticsConfig = DEFAULT_ANALYTICS) -> str | None:
-    targets = driver_targets(df, profile, model, config)
-    for role in ("profit", "revenue", "quantity"):
-        c = primary_column(df, model, role)
-        if c in targets:
-            return c
-    return next(iter(targets), None)
+    return default_target(df, profile, model, config)
 
 
 def default_drivers(df, profile, model, config: AnalyticsConfig = DEFAULT_ANALYTICS, progress: ProgressFn | None = None):

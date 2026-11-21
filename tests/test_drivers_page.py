@@ -20,10 +20,18 @@ def _page() -> None:
     render_drivers_page()
 
 
-def test_page_runs_only_on_request_then_shows_the_model_check():
+def test_page_runs_on_open_and_leads_with_the_answer():
     at = AppTest.from_function(_page, default_timeout=180).run()
-    assert not at.exception
-    assert not any("Model check" in m.value for m in at.markdown)
-    {b.key: b for b in at.button}["dr_run"].click().run()
-    assert not at.exception
-    assert any("Model check on held-out rows" in m.value for m in at.markdown)
+    assert not at.exception, [e.value for e in at.exception]
+    assert "dr_run" not in {b.key for b in at.button}                       # no button: the default run shows at once
+    text = " ".join(m.value for m in at.markdown)
+    assert "units_sold" in text and "most closely tied to" in text          # the answer sentence
+    assert "unit_price" in text and "promotion" in text                     # the two real drivers are named
+    assert "How units_sold changes" in text
+
+
+def test_changing_the_target_reruns_without_errors():
+    at = AppTest.from_function(_page, default_timeout=180).run()
+    box = {s.key: s for s in at.selectbox}["dr_target"]
+    box.select("unit_price").run()
+    assert not at.exception, [e.value for e in at.exception]

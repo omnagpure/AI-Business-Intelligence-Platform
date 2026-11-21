@@ -2,8 +2,10 @@
 
 A Random Forest is fitted on a held-out split (chronological when the data has a date column, otherwise a seeded
 random split), compared with a trivial baseline, and columns are ranked by permutation importance on the held-out rows.
-Columns that look derived from the target are excluded and listed with the reason. When the model does not beat the
-baseline the ranking is flagged as unreliable. Pure pandas/scikit-learn; no Streamlit. Inputs are never modified.
+Columns that look derived from the target (copies, parts of it, a forecast or plan of it, the actual delivery time behind a
+lateness flag, other profit measures for a profit target) are excluded and listed with the reason, and columns that carry
+the same information as another are counted once. When the model does not beat the baseline the ranking is flagged as
+unreliable; when it is near perfect the result says the target's definition has probably leaked in. Pure pandas/scikit-learn; no Streamlit. Inputs are never modified.
 """
 from __future__ import annotations
 
@@ -23,7 +25,8 @@ from sklearn.preprocessing import OneHotEncoder
 
 from analytics.data_checks import parse_flag
 from analytics.descriptive import analysable_numeric_columns, datetime_series, groupable_columns, numeric_series
-from analytics.kpis import primary_date_column
+from analytics.kpis import primary_column, primary_date_column
+from analytics.supply_chain_kpis import ACTUAL_DAYS, LATE_WORDS
 from config.analytics_config import DEFAULT_ANALYTICS, AnalyticsConfig
 from core.exceptions import DriverAnalysisError, InsufficientDataError
 from core.parallel import worker_count
@@ -33,6 +36,14 @@ from semantic.column_lexicon import token_set
 NOTE = ("Importance shows which columns help predict the target in this data. It is an association, not proof of cause: "
         "changing a driver may not change the target, and a hidden factor may drive both.")
 DATE_PARTS = {"month": "Month (from date)", "weekday": "Weekday (from date)"}
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+FORECAST_WORDS = frozenset({"forecast", "forecasted", "predicted", "prediction", "projected", "projection", "planned", "plan",
+                            "budget", "budgeted", "estimate", "estimated"})
+PROFIT_WORDS = frozenset({"profit", "margin", "benefit", "earnings"})
+AFTER_DELIVERY = ACTUAL_DAYS | LATE_WORDS | {"delay"}
+GENERIC_WORDS = frozenset({"order", "item", "per", "total", "value", "the", "of", "by", "id"})
+MAX_GROUP_TABLES = 4
 
 
 @dataclass(frozen=True)
@@ -51,6 +62,8 @@ class DriverResult:
     excluded: dict[str, str]               # column -> why it was left out
     warnings: tuple[str, ...] = field(default_factory=tuple)
     note: str = NOTE
+    overall: float = float("nan")          # mean target on the rows used (the share of "yes" for a yes/no target)
+    near_perfect: bool = False             # held-out fit so good that the target's definition has probably leaked in
 
 
 # ---- targets ----------------------------------------------------------------------------------
@@ -79,6 +92,35 @@ def driver_targets(df: pd.DataFrame, profile, model=None, config: AnalyticsConfi
             if len(x) >= config.driver_min_rows and x.nunique() >= config.driver_min_unique:
                 out[c.name] = "regression"
     return out
+
+
+def _is_lateness(tokens: set[str]) -> bool:
+    return bool(tokens & (LATE_WORDS | {"delay"})) or {"on", "time"} <= tokens or bool(tokens & {"ontime", "otd"})
+
+
+def default_target(df: pd.DataFrame, profile, model, config: AnalyticsConfig = DEFAULT_ANALYTICS,
+                   targets: dict[str, str] | None = None) -> str | None:
+    """The target the page, the Home card and Insights start with. Supply chain first: a late / on-time flag, then a delay
+    or actual delivery time; then profit, revenue and quantity; otherwise the first suitable column."""
+    targets = driver_targets(df, profile, model, config) if targets is None else targets
+    if not targets:
+        return None
+    if model is not None and getattr(model, "is_supply_chain", False):
+        def role(c: str) -> str | None:
+            return model.role_of(c) if c in model.columns else None
+        picks = (lambda c: targets[c] == "classification" and _is_lateness(token_set(c)),
+                 lambda c: targets[c] == "regression" and bool(token_set(c) & (LATE_WORDS | {"delay"})),
+                 lambda c: targets[c] == "regression" and role(c) == "duration" and bool(token_set(c) & ACTUAL_DAYS))
+        for pick in picks:
+            hit = next((c for c in targets if pick(c)), None)
+            if hit:
+                return hit
+    if model is not None:
+        for r in ("profit", "revenue", "quantity"):
+            c = primary_column(df, model, r)
+            if c in targets:
+                return c
+    return next(iter(targets))
 
 
 # ---- features and leakage rules ---------------------------------------------------------------
@@ -112,16 +154,27 @@ def _leakage(df: pd.DataFrame, model, target: str, y: pd.Series, num: list[str],
     out: dict[str, str] = {}
     tt = token_set(target)
     trole = model.role_of(target) if model is not None and target in model.columns else None
+    profit_target = trole == "profit" or bool(tt & PROFIT_WORDS)
+    late_target = _is_lateness(tt)
     for c in num + cat:
         ct = token_set(c)
+        role = model.role_of(c) if model is not None and c in model.columns else None
         if tt and (tt <= ct or ct <= tt) and ct:
             out[c] = "its name overlaps the target's name, so it is probably derived from it"
             continue
-        if model is not None and c in model.columns:
-            role = model.role_of(c)
-            if (trole == "profit" and role in {"revenue", "cost"}) or (trole == "revenue" and role == "profit"):
-                out[c] = f"{role} is arithmetically tied to a {trole} target"
-                continue
+        if (trole == "profit" and role in {"revenue", "cost"}) or (trole == "revenue" and role == "profit"):
+            out[c] = f"{role} is arithmetically tied to a {trole} target"
+            continue
+        if ct & PROFIT_WORDS and (profit_target or trole == "revenue"):
+            out[c] = f"another profit measure, tied to a {'profit' if profit_target else 'revenue'} target by arithmetic"
+            continue
+        if ct & FORECAST_WORDS and ((trole is not None and role == trole) or (ct - FORECAST_WORDS - GENERIC_WORDS) & tt):
+            out[c] = ("a forecast or plan of the target; it is usually built from the target's own history, so it predicts "
+                      "the target without explaining it")
+            continue
+        if late_target and c in num and (role in {"duration", "delay"} or "delay" in ct) and ct & AFTER_DELIVERY:
+            out[c] = "the actual delivery time, only known after delivery; lateness is worked out from it"
+            continue
         if c in cat:
             g = pd.DataFrame({"g": df[c].astype("string"), "y": y}).dropna()
             sst = float(((g["y"] - g["y"].mean()) ** 2).sum())
@@ -138,6 +191,31 @@ def _leakage(df: pd.DataFrame, model, target: str, y: pd.Series, num: list[str],
                 r = abs(x[both].corr(y[both]))
                 if r >= config.driver_leak_corr:
                     out[c] = f"almost identical to the target (correlation {r:.2f}); likely a copy or a part of it"
+    return out
+
+
+def _duplicates(df: pd.DataFrame, num: list[str], cat: list[str], seed: int, max_rows: int = 20000) -> dict[str, str]:
+    """Columns that carry the same information as an earlier one (numbers almost perfectly correlated, or categories that
+    map one-to-one). Kept in, they would split one driver's importance between two names."""
+    out: dict[str, str] = {}
+    d = df if len(df) <= max_rows else df.sample(max_rows, random_state=seed)
+    if len(num) > 1:
+        corr = pd.DataFrame({c: numeric_series(d[c]) for c in num}).corr(min_periods=30).abs()
+        for i, a in enumerate(num):
+            if a in out:
+                continue
+            for b in num[i + 1:]:
+                if b not in out and corr.loc[a, b] >= 0.98:
+                    out[b] = f"same information as '{a}' (correlation {corr.loc[a, b]:.2f}), counted once so the importance is not split"
+    for i, a in enumerate(cat):
+        if a in out:
+            continue
+        for b in cat[i + 1:]:
+            if b in out:
+                continue
+            g = d[[a, b]].dropna().astype("string")
+            if len(g) >= 30 and g.groupby(a)[b].nunique().max() == 1 and g.groupby(b)[a].nunique().max() == 1:
+                out[b] = f"same grouping as '{a}' (each value of one always goes with the same value of the other), counted once"
     return out
 
 
@@ -272,6 +350,9 @@ def run_driver_analysis(df: pd.DataFrame, target: str, profile, model=None, feat
         if miss > config.driver_max_missing:
             excluded[c] = f"missing in {miss:.0%} of rows"
     num, cat = [c for c in num if c not in excluded], [c for c in cat if c not in excluded]
+    dup = _duplicates(df, num, cat, config.driver_random_seed)
+    excluded.update(dup)
+    num, cat = [c for c in num if c not in dup], [c for c in cat if c not in dup]
     date_col = primary_date_column(df, model) if model is not None else None
     dts = datetime_series(df[date_col]) if date_col and date_col != target and date_col in df.columns else None
     use_date = dts is not None and dts.notna().mean() >= 0.8
@@ -281,8 +362,9 @@ def run_driver_analysis(df: pd.DataFrame, target: str, profile, model=None, feat
     if use_date:
         for part, label in DATE_PARTS.items():
             if label in available_date_parts(df, model, target) and (features is None or label in features):
-                vals = dts.dt.month if part == "month" else dts.dt.dayofweek
-                X[label] = vals.astype("Int64").astype(str).where(dts.notna(), "(missing)")
+                names = MONTHS if part == "month" else WEEKDAYS
+                vals = (dts.dt.month - 1) if part == "month" else dts.dt.dayofweek
+                X[label] = vals.map(lambda v: names[int(v)] if v == v else "(missing)").astype(object)
                 cat = cat + [label]
     if X.shape[1] < 2:
         raise InsufficientDataError("Fewer than two usable explanatory columns remain after leaving out identifiers, "
@@ -305,6 +387,17 @@ def run_driver_analysis(df: pd.DataFrame, target: str, profile, model=None, feat
         d = dts.loc[X.index]
         split = (f"chronological: trained on {d.iloc[0]:%Y-%m-%d} to {d.iloc[len(Xtr) - 1]:%Y-%m-%d}, "
                  f"tested on the later {d.iloc[len(Xtr)]:%Y-%m-%d} to {d.iloc[-1]:%Y-%m-%d}")
+        for label in [c for c in DATE_PARTS.values() if c in X.columns]:
+            unseen = float((~Xte[label].isin(set(Xtr[label]))).mean())
+            if unseen > 0.2:                     # e.g. one year of data: the test months never occur in the training months
+                word = "months" if label == DATE_PARTS["month"] else "weekdays"
+                excluded[label] = (f"{unseen:.0%} of the test rows fall in {word} that never occur in the earlier training rows, "
+                                   "so the model cannot learn them (the data covers too short a time span)")
+                X, Xtr, Xte = X.drop(columns=label), Xtr.drop(columns=label), Xte.drop(columns=label)
+                cat = [c for c in cat if c != label]
+        if X.shape[1] < 2:
+            raise InsufficientDataError("Fewer than two usable explanatory columns remain after leaving out calendar parts the "
+                                        "training period does not cover.")
     else:
         strat = y if task == "classification" and y.value_counts().min() >= 2 else None
         Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=config.driver_test_share, random_state=config.driver_random_seed,
@@ -340,6 +433,11 @@ def run_driver_analysis(df: pd.DataFrame, target: str, profile, model=None, feat
             {"metric": "Accuracy (held-out)", "model": float(((prob >= 0.5) == yte.astype(bool)).mean()),
              "baseline": float((yte == major).mean())}])
         reliable, scoring = metrics.loc[0, "model"] >= config.driver_min_auc, "roc_auc"
+    near_perfect = bool(metrics.loc[0, "model"] >= 0.99)
+    if near_perfect:
+        warnings.append(f"The columns predict '{target}' almost perfectly on held-out rows ({metrics.loc[0, 'metric'].split(' (')[0]} "
+                        f"{metrics.loc[0, 'model']:.2f}). Real outcomes are rarely that predictable, so one of the top columns is "
+                        "probably part of how the target is recorded or calculated. Check it before treating it as a driver.")
     if not reliable:
         warnings.append("The model predicts the held-out rows little better than a trivial guess, so the ranking below is "
                         "not trustworthy. The target may depend on columns that are not in this data.")
@@ -361,13 +459,50 @@ def run_driver_analysis(df: pd.DataFrame, target: str, profile, model=None, feat
     corr = pd.DataFrame([{"feature": c, "spearman": v} for c, v in sp.items() if v is not None])
     if not corr.empty:
         corr = corr.reindex(corr["spearman"].abs().sort_values(ascending=False).index).reset_index(drop=True)
-    groups: dict[str, pd.DataFrame] = {}
     overall = float(y.mean())
-    for f in [f for f in imp["feature"] if f in cat][:3]:
-        g = pd.DataFrame({"group": X[f], "v": y}).groupby("group")["v"].agg(["mean", "size"]).reset_index()
-        g = g[g["size"] >= 10].sort_values("mean", ascending=False).head(10)
-        if len(g) >= 2:
-            g["vs_overall"] = g["mean"] - overall
-            groups[f] = g.rename(columns={"mean": "target_mean", "size": "rows"}).reset_index(drop=True)
+    groups: dict[str, pd.DataFrame] = {}
+    for f in imp.loc[imp["importance"] > 0, "feature"]:
+        if len(groups) >= MAX_GROUP_TABLES:
+            break
+        g = _group_table(X[f], y, f in cat, f)
+        if g is not None:
+            g["vs_overall"] = g["target_mean"] - overall
+            groups[f] = g
     return DriverResult(target, task, len(X), len(Xtr), len(Xte), split, metrics, bool(reliable), imp, corr, groups,
-                        excluded, tuple(warnings))
+                        excluded, tuple(warnings), NOTE, overall, near_perfect)
+
+
+def _short(v: float) -> str:
+    a = abs(v)
+    for limit, div, suffix in ((1e9, 1e9, "B"), (1e6, 1e6, "M"), (1e4, 1e3, "k")):
+        if a >= limit:
+            return f"{v / div:,.1f}{suffix}"
+    return f"{v:,.0f}" if a >= 100 else f"{v:,.2f}".rstrip("0").rstrip(".")
+
+
+def _group_table(x: pd.Series, y: pd.Series, categorical: bool, name: str) -> pd.DataFrame | None:
+    """Average target per group (columns: group, target_mean, rows). Categories: the 10 highest averages among groups with
+    at least 10 rows; month and weekday: every value in calendar order; numbers: up to five equal-count bands, low to high."""
+    if categorical:
+        g = pd.DataFrame({"group": x.astype(str), "v": y}).groupby("group")["v"].agg(["mean", "size"]).reset_index()
+        g = g[(g["size"] >= 10) & (g["group"] != "(missing)")]
+        order = MONTHS if name == DATE_PARTS["month"] else WEEKDAYS if name == DATE_PARTS["weekday"] else None
+        if order:
+            g = g.assign(_k=g["group"].map({v: i for i, v in enumerate(order)})).sort_values("_k").drop(columns="_k")
+        else:
+            g = g.sort_values("mean", ascending=False).head(10)
+    else:
+        v = numeric_series(x)
+        both = v.notna() & y.notna()
+        if both.sum() < 50 or v[both].nunique() < 3:
+            return None
+        bins = pd.qcut(v[both].rank(method="first"), min(5, int(v[both].nunique())), labels=False)
+        t = pd.DataFrame({"b": bins, "x": v[both], "v": y[both]}).groupby("b").agg(
+            lo=("x", "min"), hi=("x", "max"), mean=("v", "mean"), size=("v", "size"))
+        labels = [_short(a) if _short(a) == _short(b) else f"{_short(a)} to {_short(b)}" for a, b in zip(t["lo"], t["hi"])]
+        if len(set(labels)) < len(labels):                       # few distinct values: bands would repeat a label
+            return None
+        g = pd.DataFrame({"group": labels, "mean": t["mean"].to_numpy(), "size": t["size"].to_numpy()})
+    if len(g) < 2:
+        return None
+    return g.rename(columns={"mean": "target_mean", "size": "rows"}).reset_index(drop=True)
