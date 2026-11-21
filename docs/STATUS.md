@@ -320,6 +320,17 @@ model 72%, rules 97%). The model is therefore used automatically only where it h
 - **Tests:** `tests/test_dashboard_numbers.py` (9); the stock-vs-reorder view test now checks that one item above its
   reorder point cannot hide another below it.
 
+## Phase 9, Batch 8: insights page
+- `analytics/recommendations.py`: new `plan(insight)` gives each finding a kind (needs attention, opportunity, pattern, data note), why it matters, a short action, concrete steps and the page that helps. `recommend` (the one-line next step used by reports) is unchanged.
+- `insights/insight_rules.py`:
+  - Drivers: the finding now says what the top driver does ("Late_delivery_risk is yes for 95.5% of rows where Shipping Mode is 'First Class', against 55.4% overall") instead of "see group table"; medium when that group differs from the overall level by 25% or more; skipped when the driver result is near perfect.
+  - Missing values: completely empty columns are a low note ("ignored by every analysis"); partly missing columns set the severity.
+  - Group gaps: one finding per measure; a time measure across service levels (shipping mode, class) is low and explained as largely by design.
+  - Threshold titles read "On-time delivery rate is 42.7%, well below the 90% reference level".
+- `insights/evidence.py`: on a priority tie, supply-chain findings come first (DataCo now leads with the 42.7% on-time rate).
+- `ui/insights_page.py` (rewrite): runs every analysis on open (your page settings win, results cached and shared with Reports); a summary sentence; the Dashboard's data-shape check; four count cards; top three priorities (finding, why it matters, what to do, an Open-page button, and a "Clue from Drivers" under delivery problems); an action plan with a Markdown download; all findings with a kind filter and an evidence expander; a "How these insights are made" panel listing settings used, analyses and rules that did not run.
+- Tests: 4 new in `tests/test_insights.py`; `tests/test_insights_page.py` rewritten for auto-run, the briefing layout and the filter.
+
 ## Phase 9, Batch 7: drivers page
 - `analytics/drivers.py`:
   - More columns that predict the target only because they come from it are left out with the reason: a forecast or plan of the target (DataCo-style `Demand_Forecast` for `Units_Sold`), the actual delivery days behind a late / on-time flag (`Days for shipping (real)` for `Late_delivery_risk`; scheduled days stay in), and other profit measures (such as `Order Item Profit Ratio`) for a profit or revenue target.

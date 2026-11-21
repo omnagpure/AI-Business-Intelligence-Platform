@@ -14,7 +14,11 @@ from analytics.kpi_relevance import is_supply_chain
 from analytics.kpis import NOT_CALCULABLE, OK, SKIPPED, KPIReport, KPIResult
 from config.analytics_config import InsightConfig
 from insights.evidence import Evidence, Insight
+from semantic.column_lexicon import token_set
 
+EMPTY_PCT = 99.5                     # a column this empty is ignored by every analysis: a note, not a problem
+TIME_WORDS = frozenset({"day", "days", "time", "lead", "transit", "shipping", "delivery", "duration", "hour", "hours"})
+SERVICE_WORDS = frozenset({"mode", "class", "service", "method", "priority", "carrier", "shipping"})
 SUPPLY_CHAIN_KEYS = {"on_time_rate", "fill_rate", "otif", "stockout_rate", "defect_rate", "below_reorder_share",
                      "supplier_top_share", "avg_delay"}
 
@@ -100,7 +104,7 @@ def _threshold_rule(table_attr: str, low: bool):
             word = "below" if low else "at or above"
             out.append(Insight(
                 id=f"threshold:{key}", rule="threshold", group=_group(key),
-                title=f"{r.name} is {v:.1f}%, {'low' if low else 'high'} against the reference level",
+                title=f"{r.name} is {v:.1f}%, {'well ' if bad_high else ''}{'below' if low else 'above'} the {medium:g}% reference level",
                 description=f"{r.name} is {v:.1f}%, {word} the {medium:g}% reference level set in this app.",
                 evidence=(_kpi_ev(r),), severity="high" if bad_high else "medium",
                 confidence=_conf(inp.kpis.rows_used, cfg), subject=r.name, direction="low" if low else "high",
@@ -158,14 +162,28 @@ def rule_missing(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
         return []
     ev = tuple(Evidence("profile", "missing_pct", f"{c.missing_pct:.1f}%", f"{c.missing:,} of {p.rows:,} values are empty",
                         (c.name,)) for c in cols[:cfg.max_items_listed])
-    worst = cols[0]
+    partial = [c for c in cols if c.missing_pct < EMPTY_PCT]
+    empty = [c for c in cols if c.missing_pct >= EMPTY_PCT]
+    worst = partial[0] if partial else cols[0]
+    s = "s" if len(cols) != 1 else ""
+    if partial:
+        title = f"{len(cols)} column{s} with {cfg.missing_medium_pct:g}% or more missing values"
+        desc = (f"'{worst.name}' is the most incomplete ({worst.missing_pct:.1f}% empty). Analyses that use these columns "
+                "rest on fewer rows.")
+        if empty:
+            desc += (f" {len(empty)} of them ({', '.join(repr(c.name) for c in empty[:3])}) "
+                     f"{'is' if len(empty) == 1 else 'are'} completely empty and simply ignored.")
+        sev = "high" if worst.missing_pct >= cfg.missing_high_pct else "medium"
+    else:
+        title = f"{len(cols)} column{s} {'is' if len(cols) == 1 else 'are'} completely empty"
+        desc = (f"{', '.join(repr(c.name) for c in cols[:3])}{' and others' if len(cols) > 3 else ''} have no values. "
+                "Every analysis ignores them, so they do no harm; they can be dropped from the export.")
+        sev = "low"
     return [Insight(
-        id="missing:columns", rule="missing", group="Data quality",
-        title=f"{len(cols)} column{'s' if len(cols) != 1 else ''} with {cfg.missing_medium_pct:g}% or more missing values",
-        description=f"'{worst.name}' is the most incomplete ({worst.missing_pct:.1f}% empty). Analyses that use these columns "
-                    "rest on fewer rows.",
-        evidence=ev, severity="high" if worst.missing_pct >= cfg.missing_high_pct else "medium", confidence="high",
-        subject=worst.name, direction="high", thresholds=f"Medium at {cfg.missing_medium_pct:g}% missing, high at {cfg.missing_high_pct:g}%.")]
+        id="missing:columns", rule="missing", group="Data quality", title=title, description=desc,
+        evidence=ev, severity=sev, confidence="high", subject=worst.name, direction="high" if partial else "empty",
+        thresholds=f"Medium at {cfg.missing_medium_pct:g}% missing, high at {cfg.missing_high_pct:g}%; completely empty "
+                   "columns are low.")]
 
 
 def rule_duplicates(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
@@ -298,10 +316,27 @@ def rule_segments(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
     return out[:cfg.max_items_listed]
 
 
+def _driver_group_line(r, feature: str) -> tuple[str, float]:
+    """('yes for 95.5% of First Class rows against 55.4% overall', relative gap) from the driver's group table, or ('', 0)."""
+    g = (getattr(r, "groups", None) or {}).get(feature)
+    overall = getattr(r, "overall", float("nan"))
+    if g is None or len(g) < 2 or not math.isfinite(overall) or overall == 0:
+        return "", 0.0
+    hi = g.loc[g["target_mean"].idxmax()]
+    lo = g.loc[g["target_mean"].idxmin()]
+    pick = hi if abs(hi["target_mean"] - overall) >= abs(lo["target_mean"] - overall) else lo
+    v = float(pick["target_mean"])
+    if r.task == "classification":
+        text = f"{r.target} is yes for {v:.1%} of rows where {feature} is '{pick['group']}', against {overall:.1%} overall"
+    else:
+        text = f"{r.target} averages {v:,.2f} where {feature} is '{pick['group']}', against {overall:,.2f} overall"
+    return text, abs(v - overall) / abs(overall)
+
+
 def rule_drivers(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
     r = inp.drivers
     imp = r.importance
-    if not r.reliable or imp is None or imp.empty:
+    if not r.reliable or imp is None or imp.empty or getattr(r, "near_perfect", False):
         return []
     top = imp.sort_values("importance", ascending=False).iloc[0]
     share = float(top["share"])
@@ -309,20 +344,28 @@ def rule_drivers(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
         return []
     dominated = share >= 0.90
     m = r.metrics.iloc[0]
+    feature = str(top["feature"])
+    line, gap = _driver_group_line(r, feature)
+    direction = str(top.get("direction", ""))
+    if not line and direction.startswith("higher values go with"):
+        line = f"higher {feature} goes with {'higher' if 'higher target' in direction else 'lower'} {r.target}"
     lim = [r.note, "Importance shows association in this data, not cause and effect."] + list(r.warnings)
     if dominated:
         lim.append("One column holds almost all the importance; it may be a near-copy of the target, so check it before treating it as a driver.")
+    desc = f"Of the columns in this data, '{feature}' says the most about {r.target} ({share:.0%} of the model's explanatory power)."
+    if line:
+        desc += f" {line[:1].upper() + line[1:]}."
     return [Insight(
         id=f"drivers:{r.target}", rule="drivers", group="Drivers",
-        title=f"'{top['feature']}' is most associated with {r.target} ({share:.0%} of importance)",
-        description=f"On held-out rows the model explains {r.target} better than a trivial baseline; '{top['feature']}' ranks first. "
-                    f"{top.get('direction', '')}.".replace("..", "."),
-        evidence=(Evidence("drivers", "importance_share", f"{share:.1%}", "permutation importance share on held-out rows", (str(top["feature"]),)),
+        title=f"'{feature}' is most associated with {r.target} ({share:.0%} of importance)",
+        description=desc,
+        evidence=(Evidence("drivers", "importance_share", f"{share:.1%}", "permutation importance share on held-out rows", (feature,)),
                   Evidence("drivers", str(m["metric"]), f"{float(m['model']):.3f}", f"baseline {float(m['baseline']):.3f}; {r.split}", (r.target,))),
-        severity="info", confidence="low" if dominated else "medium", subject=r.target, direction="association",
-        thresholds=f"Reported when the model is reliable and the top factor holds at least {cfg.driver_top_share:.0%} of importance.",
+        severity="medium" if gap >= 0.25 and not dominated else "info", confidence="low" if dominated else "medium",
+        subject=r.target, direction="association",
+        thresholds=f"Reported when the model is reliable and the top factor holds at least {cfg.driver_top_share:.0%} of importance; "
+                   "medium when its strongest group differs from the overall level by 25% or more.",
         limitations=tuple(lim))]
-
 
 
 # ---- data-pattern rules (read straight from the data) --------------------------------------------
@@ -331,8 +374,17 @@ def _rows_conf(n: int, cfg: InsightConfig) -> str:
 
 
 def rule_group_gap(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
-    out = []
-    for g in [g for g in inp.findings.group_gaps if g.gap_pct >= cfg.group_gap_medium_pct][:3]:
+    out, seen = [], set()
+    gaps = sorted((g for g in inp.findings.group_gaps if g.gap_pct >= cfg.group_gap_medium_pct), key=lambda g: -g.gap_pct)
+    for g in gaps:
+        if g.measure in seen or len(out) >= 3:
+            continue                                     # one finding per measure: the largest gap says it
+        seen.add(g.measure)
+        by_design = bool(token_set(g.measure) & TIME_WORDS) and bool(token_set(g.group) & SERVICE_WORDS)
+        lim = ("Differences in group averages are descriptive; they are not tested for significance and other factors may explain them.",)
+        if by_design:
+            lim = (f"Faster {g.group} options are meant to be faster, so this gap is largely by design. Compare actual against "
+                   "promised times per option (Drivers page) to see which option misses its promise.",) + lim
         out.append(Insight(
             id=f"group_gap:{g.group}:{g.measure}", rule="group_gap", group="Performance",
             title=f"{g.measure} varies by {g.gap_pct:.0f}% of its average across {g.group}",
@@ -341,10 +393,11 @@ def rule_group_gap(inp: InsightInputs, cfg: InsightConfig) -> list[Insight]:
             evidence=(Evidence("data", "group_gap_pct", f"{g.gap_pct:.1f}%",
                                f"(highest group mean - lowest group mean) / overall mean, groups with at least {cfg.group_min_rows} rows",
                                (g.group, g.measure)),),
-            severity="high" if g.gap_pct >= cfg.group_gap_high_pct else "medium", confidence=_rows_conf(g.min_rows, cfg),
-            subject=f"{g.measure} by {g.group}", direction="gap",
-            thresholds=f"Medium at {cfg.group_gap_medium_pct:g}% or more, high at {cfg.group_gap_high_pct:g}%.",
-            limitations=("Differences in group averages are descriptive; they are not tested for significance and other factors may explain them.",)))
+            severity="low" if by_design else "high" if g.gap_pct >= cfg.group_gap_high_pct else "medium",
+            confidence=_rows_conf(g.min_rows, cfg), subject=f"{g.measure} by {g.group}", direction="by_design" if by_design else "gap",
+            thresholds=f"Medium at {cfg.group_gap_medium_pct:g}% or more, high at {cfg.group_gap_high_pct:g}%; low when the "
+                       "groups are service levels and the measure is a time.",
+            limitations=lim))
     return out
 
 

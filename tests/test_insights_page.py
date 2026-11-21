@@ -32,17 +32,28 @@ def test_page_without_data_shows_notice():
     assert not at.exception
 
 
-def test_page_shows_findings_with_evidence_and_advanced_button():
-    at = _run()
-    assert not at.exception
-    assert [m.label for m in at.metric] == ["High", "Medium", "Low", "Info"]
-    assert any("missing values" in str(m.value) for m in at.markdown)               # 'note' is 40% empty
-    assert any(b.label == "Include advanced analyses" for b in at.button)
+def _text(at) -> str:
+    return " ".join(str(m.value) for m in at.markdown) + " ".join(h.proto.body for h in at.get("html"))
 
 
-def test_advanced_analyses_add_forecast_findings_and_never_crash():
+def test_page_runs_everything_on_open_and_reads_like_a_briefing():
     at = _run()
-    [b for b in at.button if b.label == "Include advanced analyses"][0].click().run()
-    assert not at.exception
-    groups = " ".join(str(m.value) for m in at.markdown if "eyebrow" in str(m.value))
-    assert "Anomalies ·" in groups                                                   # the advanced anomaly run added a finding
+    assert not at.exception, [e.value for e in at.exception]
+    assert not any(b.label == "Include advanced analyses" for b in at.button)          # no button: all analyses run on open
+    text = _text(at)
+    assert "We found" in text and "findings in your data" in text                      # the summary sentence
+    for label in ("Needs attention", "Opportunities", "Patterns", "Data notes"):       # summary cards
+        assert label in text
+    assert "missing values" in text                                                    # 'note' is 40% empty
+    assert "Action plan" in text and "Why it matters" in text and "What to do" in text
+    assert "Anomalies" in text                                                         # the advanced anomaly run added a finding
+    assert any(b.label == "Download action plan" for b in at.download_button)
+
+
+def test_filter_shows_only_the_chosen_kind():
+    at = _run()
+    ctl = {c.key: c for c in at.segmented_control}["ins_filter"]
+    ctl.set_value("data").run()
+    assert not at.exception, [e.value for e in at.exception]
+    cards = [m.value for m in at.markdown if "ins-head" in str(m.value) and "ins-n" not in str(m.value)]
+    assert cards and all("Data note" in c for c in cards)

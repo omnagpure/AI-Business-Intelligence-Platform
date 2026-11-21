@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 SEVERITIES = ("high", "medium", "low", "info")
 CONFIDENCES = ("high", "medium", "low")
-GROUPS = ("Performance", "Supply chain", "Data quality", "Forecast", "Anomalies", "Segments", "Drivers")
+GROUPS = ("Supply chain", "Performance", "Data quality", "Forecast", "Anomalies", "Segments", "Drivers")
 
 
 @dataclass(frozen=True)

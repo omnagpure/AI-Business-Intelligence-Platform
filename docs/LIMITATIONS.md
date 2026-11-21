@@ -55,6 +55,14 @@
 - Segment names come from the single strongest difference; read the card text for the rest.
 - The scatter thins very large tables to about 4,000 points (an evenly spaced sample per segment). The averages use every entity.
 
+## Insights
+- Findings, reasons and steps come from fixed rules and templates, not a language model. They are written for typical
+  supply-chain and sales data; the wording can be generic for other domains.
+- The Insights page runs all four advanced analyses on open (a few seconds to about 20 s on large files the first time,
+  cached afterwards).
+- "Clue from Drivers" links a delivery problem to the driver finding by column-name words (late, delay, delivery, lead);
+  it does not prove the driver explains the KPI.
+
 ## Drivers
 - Importance is association on held-out rows, not cause. A random forest on at most 20,000 sampled rows.
 - Leak rules are name and role based (forecast / plan words, actual-delivery words, profit words) plus correlation

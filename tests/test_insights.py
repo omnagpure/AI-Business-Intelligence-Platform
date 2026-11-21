@@ -8,7 +8,7 @@ from analytics.anomaly_detection import AnomalyReport
 from analytics.drivers import DriverResult
 from analytics.forecasting import ForecastResult, ModelScore
 from analytics.kpis import NOT_CALCULABLE, OK, SKIPPED, KPIReport, KPIResult
-from analytics.recommendations import recommend
+from analytics.recommendations import KINDS, plan, recommend
 from analytics.segmentation import SegmentationResult
 from config.analytics_config import InsightConfig
 from core.exceptions import InsufficientDataError
@@ -269,3 +269,45 @@ def test_default_runs_do_not_mutate_and_raise_clear_errors_when_unsuitable():
         default_drivers(pd.DataFrame({"a": ["x", "y"]}), profile_dataframe(pd.DataFrame({"a": ["x", "y"]})),
                         _model(pd.DataFrame({"a": ["x", "y"]})))
     assert default_anomalies(df, profile_dataframe(df), _model(df)).summary is not None
+
+
+# ---- page-facing content ---------------------------------------------------------------------------
+def test_every_insight_gets_a_plan_with_a_kind_why_and_steps():
+    rep = generate_insights(InsightInputs(kpis=report(kpi("revenue_growth", -30.0), kpi("on_time_rate", 70.0)),
+                                          forecast=forecast(), anomalies=anomaly(0.12), segmentation=segmentation(),
+                                          drivers=drivers()))
+    for i in rep.insights:
+        p = plan(i)
+        assert p.kind in KINDS and p.why and p.action and p.steps
+    kinds = {i.rule: plan(i).kind for i in rep.insights}
+    assert kinds["threshold"] == "risk" and kinds["forecast_direction"] == "opportunity"
+    assert plan(rep.insights[0]) == plan(rep.insights[0])                                  # deterministic
+
+
+def test_supply_chain_findings_rank_first_on_a_tie():
+    rep = run(kpi("revenue_growth", -34.0), kpi("on_time_rate", 42.7, name="On-time delivery rate"))
+    assert [i.rule for i in rep.insights[:2]] == ["threshold", "growth"]
+    assert rep.insights[0].title == "On-time delivery rate is 42.7%, well below the 90% reference level"
+
+
+def test_completely_empty_columns_are_a_low_note_not_a_high_problem():
+    df = pd.DataFrame({"a": range(12), "empty": [None] * 12})
+    i = _profile_insights(df)["missing"]
+    assert i.severity == "low" and "completely empty" in i.title and plan(i).kind == "data"
+    mixed = pd.DataFrame({"a": range(12), "empty": [None] * 12, "half": [None] * 6 + [1.0] * 6})
+    m = _profile_insights(mixed)["missing"]
+    assert m.severity == "high" and m.subject == "half" and "is completely empty" in m.description
+
+
+def test_drivers_insight_says_what_the_top_driver_does():
+    g = pd.DataFrame({"group": ["First", "Standard"], "target_mean": [0.95, 0.39], "rows": [300, 1200]})
+    imp = pd.DataFrame({"feature": ["mode", "x"], "kind": ["category", "numeric"], "importance": [3.0, 1.0], "std": [0.1, 0.1],
+                        "share": [0.75, 0.25], "direction": ["see group table", "no clear direction"]})
+    m = pd.DataFrame({"metric": ["ROC AUC (held-out)"], "model": [0.76], "baseline": [0.5]})
+    r = DriverResult("late", "classification", 1500, 1125, 375, "chronological", m, True, imp, pd.DataFrame(), {"mode": g}, {},
+                     (), "note", 0.55, False)
+    i = generate_insights(InsightInputs(drivers=r)).insights[0]
+    assert "95.0% of rows where mode is 'First'" in i.description and "see group table" not in i.description
+    assert i.severity == "medium"                                                          # 0.95 vs 0.55: a 73% gap
+    import dataclasses
+    assert not generate_insights(InsightInputs(drivers=dataclasses.replace(r, near_perfect=True))).insights

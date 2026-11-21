@@ -14,7 +14,7 @@ def priority_score(i: Insight) -> int:
 
 
 def rank(insights: list[Insight]) -> list[Insight]:
-    """Drop duplicate ids (first wins), score, and sort by priority, then group order, then id (stable and deterministic)."""
+    """Drop duplicate ids (first wins), score, and sort by priority, then group order (supply chain first), then id (stable and deterministic)."""
     seen: dict[str, Insight] = {}
     for i in insights:
         seen.setdefault(i.id, i)

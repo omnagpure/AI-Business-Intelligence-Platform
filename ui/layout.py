@@ -98,6 +98,40 @@ div[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid
 .kpi.compact .kpi-foot {margin-top:auto;}
 .kpi.compact .kpi-delta {margin-bottom:.35rem;}
 
+/* insights: priority cards, finding cards, action plan */
+[class*="st-key-ins_card_"] {background:var(--surface); border-radius:var(--r-lg) !important; box-shadow:var(--shadow);}
+[class*="st-key-ins_card_risk"] {border-left:3px solid var(--danger) !important;}
+[class*="st-key-ins_card_opportunity"] {border-left:3px solid var(--ok) !important;}
+[class*="st-key-ins_card_pattern"] {border-left:3px solid var(--accent) !important;}
+[class*="st-key-ins_card_data"] {border-left:3px solid var(--line-2) !important;}
+.ins-head {display:flex; align-items:center; gap:.45rem; flex-wrap:wrap; font-size:.74rem; color:var(--muted); margin-bottom:.35rem;}
+.ins-n {display:inline-flex; align-items:center; justify-content:center; width:1.35rem; height:1.35rem; border-radius:50%;
+  background:var(--text); color:var(--bg); font-size:.72rem; font-weight:700; font-variant-numeric:tabular-nums;}
+.chip.info {color:var(--accent); background:var(--accent-soft);}
+.chip.warn {color:var(--warn); background:var(--warn-soft);}
+.ins-title {font-size:1.06rem; font-weight:600; letter-spacing:-.01em; line-height:1.35; color:var(--text);}
+.ins-title.sm {font-size:.95rem;}
+.ins-desc {font-size:.875rem; line-height:1.55; color:var(--text); margin:.35rem 0 .2rem; opacity:.92;}
+.ins-k {font-size:.7rem; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--faint); margin:.75rem 0 .25rem;}
+.ins-why {font-size:.84rem; line-height:1.5; color:var(--muted);}
+.ins-clue {font-size:.82rem; line-height:1.5; color:var(--text); background:var(--surface-2); border-radius:var(--r);
+  padding:.5rem .7rem; margin-top:.6rem;}
+.ins-clue b {color:var(--accent); font-weight:600; margin-right:.35rem;}
+.ins-do {font-size:.95rem; font-weight:600; color:var(--text); line-height:1.4;}
+.ins-steps {margin:.35rem 0 .2rem; padding-left:1.15rem; font-size:.84rem; line-height:1.6; color:var(--text);}
+.ins-steps li::marker {color:var(--faint); font-variant-numeric:tabular-nums;}
+.ins-meta {font-size:.74rem; color:var(--faint); margin-top:.5rem;}
+.plan {border:1px solid var(--line); border-radius:var(--r-lg); background:var(--surface); box-shadow:var(--shadow); overflow:hidden;}
+.plan-row {display:grid; grid-template-columns:1.6rem minmax(0, 2.2fr) minmax(0, 2.6fr) 6.5rem; gap:.9rem; align-items:start;
+  padding:.7rem 1rem; border-top:1px solid var(--line); font-size:.84rem; line-height:1.45;}
+.plan-row:first-child {border-top:none;}
+.plan-row.head {background:var(--surface-2); font-size:.7rem; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--faint);}
+.plan-box {width:1rem; height:1rem; border:1.5px solid var(--line-2); border-radius:4px; margin-top:.15rem;}
+.plan-a {font-weight:600; color:var(--text);}
+.plan-f {color:var(--muted); font-size:.78rem; margin-top:.1rem;}
+.plan-w {color:var(--muted);}
+@media (max-width: 900px) {.plan-row {grid-template-columns:1.6rem minmax(0, 1fr) 5.5rem;} .plan-row .plan-w {display:none;}}
+
 /* KPI cards: value, change chip, sparkline, footnote */
 .kpi-grid {display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.85rem;}
 .kpi {background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:.95rem 1.05rem .75rem;
